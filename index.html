@@ -1,123 +1,201 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Rods from God Game</title>
-    <style>body { margin: 0; overflow: hidden; }</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rods from God: Kinetic Strike</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial, sans-serif;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        button {
+            margin: 5px;
+            padding: 5px 10px;
+            background: #333;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover { background: #555; }
+    </style>
 </head>
 <body>
-    <div id="game"></div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <div id="ui">
+        <div>Altitude: <span id="altitude">0</span> km</div>
+        <div>Velocity: <span id="velocity">0</span> m/s</div>
+        <div>Impact Energy: <span id="energy">0</span> MJ</div>
+        <button id="launch">Launch Rod</button>
+        <button id="reset">Reset</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
     <script>
-        // Scene setup
+        // Scene Setup
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        document.getElementById('game').appendChild(renderer.domElement);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
 
-        // Earth
-        const R_e = 100;
-        const earth = new THREE.Mesh(
-            new THREE.SphereGeometry(R_e, 32, 32),
-            new THREE.MeshBasicMaterial({ color: 0x0000ff })
-        );
-        scene.add(earth);
+        // Earth (Simplified as a flat plane for performance)
+        const groundGeometry = new THREE.PlaneGeometry(10000, 10000);
+        const groundMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0x228B22, 
+            specular: 0x050505,
+            shininess: 10 
+        });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
 
-        // Satellite
-        const r_orbit = 110;
-        const satellite = new THREE.Mesh(
-            new THREE.BoxGeometry(5, 5, 5),
-            new THREE.MeshBasicMaterial({ color: 0xff0000 })
-        );
-        satellite.position.set(r_orbit, 0, 0);
-        scene.add(satellite);
+        // Rod (Tungsten Cylinder)
+        const rodRadius = 0.15; // 30 cm diameter
+        const rodLength = 6.1;  // 20 feet
+        const rodGeometry = new THREE.CylinderGeometry(rodRadius, rodRadius, rodLength, 32);
+        const rodMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0xB0C4DE,
+            specular: 0x555555,
+            shininess: 50 
+        });
+        const rod = new THREE.Mesh(rodGeometry, rodMaterial);
+        rod.castShadow = true;
+        rod.position.y = 400; // Start at 400 km altitude (Low Earth Orbit)
+        scene.add(rod);
 
-        // Targets (example: one at equator)
-        const target = new THREE.Mesh(
-            new THREE.SphereGeometry(2, 16, 16),
-            new THREE.MeshBasicMaterial({ color: 0xffff00 })
-        );
-        target.position.set(R_e, 0, 0); // lon=0, lat=0
-        target.lat = 0;
-        target.lon = 0;
-        earth.add(target);
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+        scene.add(ambientLight);
+        const sunLight = new THREE.DirectionalLight(0xffffff, 1);
+        sunLight.position.set(500, 500, 500);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        sunLight.shadow.camera.near = 0.5;
+        sunLight.shadow.camera.far = 1000;
+        scene.add(sunLight);
 
-        // Simulation parameters
-        const mu = 1;
-        const omega = Math.sqrt(mu / Math.pow(r_orbit / R_e, 3));
-        const T_orbit = 2 * Math.PI / omega;
-        const timeScale = 30 / T_orbit; // Orbital period = 30s
-        const omega_earth = omega / 16; // Earth slower than orbit
-        const dt = 1 / 60;
-        const dt_sim = dt * timeScale;
+        // Camera Positioning
+        camera.position.set(0, 50, 100);
+        camera.lookAt(0, 0, 0);
 
-        let theta = 0;
-        let rods = [];
-        let time = 0;
+        // Physics Constants
+        const G = 6.67430e-11; // Gravitational constant (m³/kg/s²)
+        const M = 5.972e24;   // Earth's mass (kg)
+        const R = 6.371e6;    // Earth's radius (m)
+        const rodMass = 8700 * Math.PI * rodRadius * rodRadius * rodLength; // Tungsten density ~8700 kg/m³
+        const g0 = 9.81;      // Surface gravity (m/s²)
+        const dragCoefficient = 0.82; // Approximate for cylinder
+        const airDensitySL = 1.225; // Sea level air density (kg/m³)
 
-        // Rod deployment
-        function deployRod() {
-            const rod = new THREE.Mesh(
-                new THREE.CylinderGeometry(1, 1, 10, 16),
-                new THREE.MeshBasicMaterial({ color: 0x888888 })
-            );
-            rod.position.copy(satellite.position);
-            const v_sat = new THREE.Vector3(
-                -Math.sqrt(mu / (r_orbit / R_e)) * Math.sin(theta),
-                Math.sqrt(mu / (r_orbit / R_e)) * Math.cos(theta),
-                0
-            );
-            const dir = satellite.position.clone().normalize().multiplyScalar(-1);
-            rod.velocity = v_sat.add(dir.multiplyScalar(0.1));
-            rod.startTime = time;
-            scene.add(rod);
-            rods.push(rod);
+        // Simulation Variables
+        let velocity = 0;     // m/s
+        let altitude = 400000; // m (400 km starting altitude)
+        let isLaunched = false;
+
+        // UI Elements
+        const altitudeDisplay = document.getElementById('altitude');
+        const velocityDisplay = document.getElementById('velocity');
+        const energyDisplay = document.getElementById('energy');
+        const launchButton = document.getElementById('launch');
+        const resetButton = document.getElementById('reset');
+
+        launchButton.addEventListener('click', () => isLaunched = true);
+        resetButton.addEventListener('click', resetSimulation);
+
+        function resetSimulation() {
+            isLaunched = false;
+            velocity = 0;
+            altitude = 400000;
+            rod.position.y = 400;
+            rod.rotation.set(0, 0, 0);
         }
 
-        // Animation loop
+        // Animation Loop
         function animate() {
             requestAnimationFrame(animate);
 
-            // Update satellite
-            theta += omega * dt_sim;
-            satellite.position.set(r_orbit * Math.cos(theta), r_orbit * Math.sin(theta), 0);
-            camera.position.set(satellite.position.x + 50, satellite.position.y + 50, 50);
-            camera.lookAt(satellite.position);
+            if (isLaunched && altitude > 0) {
+                // Gravitational Acceleration (varies with altitude)
+                const r = R + altitude;
+                const gravity = (G * M) / (r * r);
 
-            // Rotate Earth
-            earth.rotation.z += omega_earth * dt_sim;
+                // Atmospheric Drag (simplified exponential decay)
+                const altitudeKm = altitude / 1000;
+                const airDensity = altitudeKm < 100 ? airDensitySL * Math.exp(-altitudeKm / 7.5) : 0;
+                const crossSection = Math.PI * rodRadius * rodRadius;
+                const dragForce = 0.5 * airDensity * velocity * velocity * dragCoefficient * crossSection;
+                const dragAcceleration = -dragForce / rodMass;
 
-            // Update rods
-            rods = rods.filter(rod => {
-                let r = rod.position.clone();
-                let r_mag = r.length() / R_e;
-                if (r_mag <= 1) {
-                    // Impact: check hit
-                    let t_impact = time - rod.startTime;
-                    let theta_earth = omega_earth * t_impact;
-                    let r_world = rod.position;
-                    let x_local = r_world.x * Math.cos(theta_earth) + r_world.y * Math.sin(theta_earth);
-                    let y_local = -r_world.x * Math.sin(theta_earth) + r_world.y * Math.cos(theta_earth);
-                    let z_local = r_world.z;
-                    let lat = Math.asin(z_local / R_e);
-                    let lon = Math.atan2(y_local, x_local);
-                    scene.remove(rod);
-                    console.log(`Hit at lat: ${lat}, lon: ${lon}`); // Check against target.lat, target.lon
-                    return false;
+                // Update Velocity and Position
+                const totalAcceleration = gravity + (velocity < 0 ? dragAcceleration : 0);
+                velocity += totalAcceleration * 0.016; // 60 FPS timestep
+                altitude += velocity * 0.016;
+                rod.position.y = altitude / 1000; // Convert to km for visual scale
+
+                // Rod Orientation (align with velocity vector)
+                rod.rotation.x = Math.PI / 2 - Math.atan2(velocity, 100);
+
+                // Impact Handling
+                if (altitude <= 0) {
+                    altitude = 0;
+                    velocity = 0;
+                    isLaunched = false;
+                    createImpactCrater();
                 }
-                let a = r.multiplyScalar(-mu / (r_mag * r_mag * r_mag));
-                rod.velocity.addScaledVector(a, dt_sim);
-                rod.position.addScaledVector(rod.velocity, dt_sim);
-                return true;
-            });
+            }
 
-            time += dt_sim;
+            // Update UI
+            altitudeDisplay.textContent = (altitude / 1000).toFixed(2);
+            velocityDisplay.textContent = Math.abs(velocity).toFixed(2);
+            energyDisplay.textContent = ((0.5 * rodMass * velocity * velocity) / 1e6).toFixed(2);
+
             renderer.render(scene, camera);
         }
 
-        // Controls
-        document.addEventListener('keydown', (e) => {
-            if (e.code === 'Space') deployRod();
+        // Impact Crater Effect
+        function createImpactCrater() {
+            const craterGeometry = new THREE.CircleGeometry(5, 32);
+            const craterMaterial = new THREE.MeshBasicMaterial({ color: 0x8B4513 });
+            const crater = new THREE.Mesh(craterGeometry, craterMaterial);
+            crater.rotation.x = -Math.PI / 2;
+            crater.position.y = 0.01; // Slightly above ground to avoid z-fighting
+            scene.add(crater);
+
+            // Simple particle effect for debris
+            const particles = new THREE.Group();
+            for (let i = 0; i < 50; i++) {
+                const particle = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.1, 8, 8),
+                    new THREE.MeshBasicMaterial({ color: 0x808080 })
+                );
+                particle.position.set(
+                    (Math.random() - 0.5) * 10,
+                    Math.random() * 5,
+                    (Math.random() - 0.5) * 10
+                );
+                particles.add(particle);
+            }
+            scene.add(particles);
+            setTimeout(() => scene.remove(particles), 2000);
+        }
+
+        // Handle Window Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
         animate();
