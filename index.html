@@ -54,7 +54,7 @@
             <span>Tech: <span id="tech">0</span></span>
         </div>
         <div id="controls">
-            <button onclick="launchStrike()">Launch Kinetic Strike</button>
+            <button onclick="dropRod()">Launch Kinetic Strike</button>
             <button onclick="upgradeSatellites()">Deploy Satellite (50 Metal)</button>
             <button onclick="upgradeRods()">Increase Rods (100 Metal)</button>
             <button onclick="upgradePower()">Enhance Payload (150 Metal)</button>
@@ -105,8 +105,7 @@
             nations: { usa: 100, china: 100, russia: 100, eu: 100 },
             defenses: 0,
             weather: { wind: new THREE.Vector3(0, 0, 0), turbulence: 0 },
-            alertLevel: "Low",
-            target: null // Targeting coordinates
+            alertLevel: "Low"
         };
 
         // Three.js Setup
@@ -127,28 +126,28 @@
 
         // Earth
         const earthRadius = 6371000;
-        const earthGeometry = new THREE.SphereGeometry(earthRadius, 512, 512);
+        const earthGeometry = new THREE.SphereGeometry(earthRadius, 256, 256);
         const earthMaterial = new THREE.MeshPhongMaterial({
             color: 0x0066cc,
-            shininess: 100,
-            specular: 0x555555,
+            shininess: 80,
+            specular: 0x444444,
             map: new THREE.TextureLoader().load('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg'),
             bumpMap: new THREE.TextureLoader().load('https://threejs.org/examples/textures/planets/earth_bump_2048.jpg'),
-            bumpScale: 20000,
+            bumpScale: 15000,
             displacementMap: new THREE.TextureLoader().load('https://threejs.org/examples/textures/planets/earth_bump_2048.jpg'),
-            displacementScale: 25000
+            displacementScale: 20000
         });
         const earth = new THREE.Mesh(earthGeometry, earthMaterial);
         earth.receiveShadow = true;
         scene.add(earth);
 
         // Atmosphere
-        const atmosphereGeometry = new THREE.SphereGeometry(earthRadius * 1.025, 512, 512);
+        const atmosphereGeometry = new THREE.SphereGeometry(earthRadius * 1.02, 256, 256);
         const atmosphereMaterial = new THREE.ShaderMaterial({
             uniforms: {
                 time: { value: 0 },
                 glowColor: { value: new THREE.Color(0x00ccff) },
-                intensity: { value: 0.7 }
+                intensity: { value: 0.6 }
             },
             vertexShader: `
                 varying vec3 vNormal;
@@ -166,8 +165,8 @@
                 varying vec3 vNormal;
                 varying vec3 vPosition;
                 void main() {
-                    float glow = pow(0.9 - dot(vNormal, vec3(0, 0, 1)), 4.0) * intensity;
-                    gl_FragColor = vec4(glowColor, glow * (0.85 + 0.15 * sin(time * 2.0)));
+                    float glow = pow(0.85 - dot(vNormal, vec3(0, 0, 1)), 3.0) * intensity;
+                    gl_FragColor = vec4(glowColor, glow * (0.8 + 0.2 * sin(time)));
                 }
             `,
             side: THREE.BackSide,
@@ -178,56 +177,56 @@
         scene.add(atmosphere);
 
         // Clouds
-        const cloudGeometry = new THREE.SphereGeometry(earthRadius * 1.015, 512, 512);
+        const cloudGeometry = new THREE.SphereGeometry(earthRadius * 1.01, 256, 256);
         const cloudMaterial = new THREE.MeshPhongMaterial({
             map: new THREE.TextureLoader().load('https://threejs.org/examples/textures/planets/earth_clouds_2048.png'),
             transparent: true,
-            opacity: 0.8,
+            opacity: 0.7,
             depthWrite: false
         });
         const clouds = new THREE.Mesh(cloudGeometry, cloudMaterial);
         scene.add(clouds);
 
         // Lighting
-        const sunLight = new THREE.DirectionalLight(0xffffff, 1.4);
-        sunLight.position.set(200000000, 200000000, 200000000);
+        const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        sunLight.position.set(150000000, 150000000, 150000000);
         sunLight.castShadow = true;
-        sunLight.shadow.mapSize.width = 4096;
-        sunLight.shadow.mapSize.height = 4096;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
         sunLight.shadow.camera.near = 1000000;
-        sunLight.shadow.camera.far = 400000000;
-        sunLight.shadow.camera.left = -60000000;
-        sunLight.shadow.camera.right = 60000000;
-        sunLight.shadow.camera.top = 60000000;
-        sunLight.shadow.camera.bottom = -60000000;
+        sunLight.shadow.camera.far = 300000000;
+        sunLight.shadow.camera.left = -50000000;
+        sunLight.shadow.camera.right = 50000000;
+        sunLight.shadow.camera.top = 50000000;
+        sunLight.shadow.camera.bottom = -50000000;
         scene.add(sunLight);
-        scene.add(new THREE.AmbientLight(0x333333));
+        scene.add(new THREE.AmbientLight(0x222222));
 
         // Rods
-        const rodGeometry = new THREE.CylinderGeometry(350, 350, 5000, 128, 1, true);
+        const rodGeometry = new THREE.CylinderGeometry(300, 300, 4000, 64, 1, true);
         const rodMaterial = new THREE.MeshPhongMaterial({
             color: 0xaaaaaa,
             emissive: 0xff5500,
             emissiveIntensity: 0,
-            shininess: 150,
-            specular: 0x666666,
+            shininess: 120,
+            specular: 0x555555,
             side: THREE.DoubleSide
         });
         const rods = [];
 
         // Impact Craters
-        const craterGeometry = new THREE.PlaneGeometry(60000, 60000, 128, 128);
+        const craterGeometry = new THREE.PlaneGeometry(50000, 50000, 64, 64);
         const craterMaterial = new THREE.MeshPhongMaterial({
-            color: 0x222222,
-            shininess: 5,
+            color: 0x333333,
+            shininess: 10,
             transparent: true,
-            opacity: 0.9,
+            opacity: 0.8,
             blending: THREE.NormalBlending
         });
         const craters = [];
 
         // Ejecta Particles
-        const particleCount = 150000;
+        const particleCount = 100000;
         const particleGeometry = new THREE.BufferGeometry();
         const particlePositions = new Float32Array(particleCount * 3);
         const particleVelocities = new Float32Array(particleCount * 3);
@@ -246,7 +245,7 @@
                 void main() {
                     vLife = size > 0.0 ? 1.0 : 0.0;
                     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                    gl_PointSize = size * (400.0 / -mvPosition.z);
+                    gl_PointSize = size * (300.0 / -mvPosition.z);
                     gl_Position = projectionMatrix * mvPosition;
                 }
             `,
@@ -256,7 +255,7 @@
                 varying float vLife;
                 void main() {
                     if (vLife < 0.1) discard;
-                    float alpha = vLife * (0.9 + 0.1 * sin(time * 4.0));
+                    float alpha = vLife * (0.8 + 0.2 * sin(time * 5.0));
                     gl_FragColor = vec4(baseColor, alpha);
                 }
             `,
@@ -271,60 +270,36 @@
         const G = 6.67430e-11;
         const M = 5.972e24;
 
-        // Targeting System
-        const raycaster = new THREE.Raycaster();
-        let targetMarker = new THREE.Mesh(new THREE.SphereGeometry(50000, 32, 32), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
-        scene.add(targetMarker);
-        targetMarker.visible = false;
-
-        function setTarget(event) {
-            const mouse = new THREE.Vector2(
-                (event.clientX / window.innerWidth) * 2 - 1,
-                -(event.clientY / window.innerHeight) * 2 + 1
-            );
-            raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObject(earth);
-            if (intersects.length > 0) {
-                gameState.target = intersects[0].point.clone().normalize().multiplyScalar(earthRadius);
-                targetMarker.position.copy(gameState.target);
-                targetMarker.visible = true;
-            }
-        }
-
-        document.addEventListener('click', setTarget);
-
         // Game Logic
-        function launchStrike() {
-            if (Date.now() - gameState.lastDrop < 10000 / gameState.satellites) return;
+        function dropRod() {
+            if (Date.now() - gameState.lastDrop < 15000 / gameState.satellites) return;
             if (gameState.defenses > Math.random() * 100 && !gameState.stealth) {
                 showAlert("Strike intercepted by planetary defenses!");
                 return;
             }
-            if (!gameState.target) {
-                showAlert("Select a target first!");
-                return;
-            }
             gameState.lastDrop = Date.now();
-            const dropCount = gameState.colossus && Math.random() < 0.25 ? 1 : gameState.rods;
+            const dropCount = gameState.colossus && Math.random() < 0.2 ? 1 : gameState.rods;
             for (let i = 0; i < dropCount; i++) {
+                const spread = gameState.precision ? 250000 : 1000000;
                 const rod = new THREE.Mesh(rodGeometry, rodMaterial.clone());
-                const startPos = gameState.target.clone().normalize().multiplyScalar(36000000);
-                rod.position.copy(startPos);
-                const direction = gameState.target.clone().sub(startPos).normalize();
-                rod.velocity = direction.multiplyScalar(-22000);
-                rod.mass = gameState.colossus && i === 0 ? 4000000 : 1000 * gameState.rodPower;
-                rod.scale.set(1 + rod.mass * 0.001, 1 + rod.mass * 0.001, 1 + rod.mass * 0.001);
+                rod.position.set(
+                    Math.random() * spread - spread / 2,
+                    36000000,
+                    Math.random() * spread - spread / 2
+                );
+                rod.velocity = new THREE.Vector3(0, -20000, 0);
+                rod.mass = gameState.colossus && i === 0 ? 3000000 : 1000 * gameState.rodPower;
+                rod.scale.set(1 + rod.mass * 0.0008, 1 + rod.mass * 0.0008, 1 + rod.mass * 0.0008);
                 rod.castShadow = true;
                 scene.add(rod);
                 rods.push(rod);
             }
-            gameState.metal += 50 * gameState.rodPower * dropCount;
-            gameState.influence += 30 * gameState.rodPower * dropCount;
-            gameState.tech += 20 * gameState.rodPower * dropCount;
+            gameState.metal += 40 * gameState.rodPower * dropCount;
+            gameState.influence += 25 * gameState.rodPower * dropCount;
+            gameState.tech += 15 * gameState.rodPower * dropCount;
             updateUI();
         }
 
-        // Upgrade and Unlock Functions
         function upgradeSatellites() {
             if (gameState.metal >= 50) {
                 gameState.metal -= 50;
@@ -344,7 +319,7 @@
         function upgradePower() {
             if (gameState.metal >= 150) {
                 gameState.metal -= 150;
-                gameState.rodPower *= 1.35;
+                gameState.rodPower *= 1.3;
                 updateUI();
             }
         }
@@ -401,9 +376,9 @@
 
         function resetWorld() {
             if (gameState.phase >= 3) {
-                gameState.metal *= 5;
-                gameState.influence *= 5;
-                gameState.tech *= 5;
+                gameState.metal *= 4;
+                gameState.influence *= 4;
+                gameState.tech *= 4;
                 gameState.satellites = 1;
                 gameState.rods = 1;
                 gameState.rodPower = 1;
@@ -418,7 +393,6 @@
                 gameState.nations = { usa: 100, china: 100, russia: 100, eu: 100 };
                 gameState.defenses = 0;
                 gameState.alertLevel = "Low";
-                gameState.target = null;
                 rods.forEach(rod => scene.remove(rod));
                 rods.length = 0;
                 craters.forEach(crater => scene.remove(crater));
@@ -440,35 +414,32 @@
             }
         }
 
-        // Geopolitics and Weather Updates
         function updateGeopolitics() {
             if (gameState.phase >= 2) {
                 for (let nation in gameState.nations) {
-                    gameState.nations[nation] -= gameState.rodPower * gameState.rods * 0.4;
+                    gameState.nations[nation] -= gameState.rodPower * gameState.rods * 0.35;
                     if (gameState.nations[nation] <= 0) gameState.nations[nation] = 0;
                 }
                 if (gameState.phase === 3) {
-                    gameState.defenses += 0.04;
-                    if (Math.random() < 0.3) {
+                    gameState.defenses += 0.03;
+                    if (Math.random() < 0.25) {
                         const rod = new THREE.Mesh(rodGeometry, rodMaterial.clone());
-                        const randomPos = new THREE.Vector3(
-                            Math.random() * 800000 - 400000,
+                        rod.position.set(
+                            Math.random() * 1000000 - 500000,
                             36000000,
-                            Math.random() * 800000 - 400000
+                            Math.random() * 1000000 - 500000
                         );
-                        rod.position.copy(randomPos);
-                        const direction = earth.position.clone().sub(randomPos).normalize();
-                        rod.velocity = direction.multiplyScalar(-18000);
-                        rod.mass = 2500;
-                        rod.scale.set(1.8, 1.8, 1.8);
+                        rod.velocity = new THREE.Vector3(0, -16000, 0);
+                        rod.mass = 2000;
+                        rod.scale.set(1.5, 1.5, 1.5);
                         rod.castShadow = true;
                         scene.add(rod);
                         rods.push(rod);
-                        showAlert("Enemy counterstrike launched!");
+                        showAlert("Enemy launches counterstrike!");
                     }
                 }
                 const totalStability = Object.values(gameState.nations).reduce((a, b) => a + b, 0);
-                gameState.alertLevel = totalStability > 200 ? "Low" : totalStability > 100 ? "Moderate" : "Critical";
+                gameState.alertLevel = totalStability > 200 ? "Low" : totalStability > 100 ? "Moderate" : "High";
                 document.getElementById('alert-level').textContent = gameState.alertLevel;
             }
             document.getElementById('usa').textContent = Math.floor(gameState.nations.usa);
@@ -480,31 +451,30 @@
 
         function updateWeather() {
             gameState.weather.wind.set(
-                Math.sin(gameState.timePlayed * 0.02) * 100,
+                Math.sin(gameState.timePlayed * 0.05) * 80,
                 0,
-                Math.cos(gameState.timePlayed * 0.02) * 100
+                Math.cos(gameState.timePlayed * 0.05) * 80
             );
-            gameState.weather.turbulence = Math.random() * 20;
+            gameState.weather.turbulence = Math.random() * 15;
             document.getElementById('wind-x').textContent = gameState.weather.wind.x.toFixed(1);
             document.getElementById('wind-z').textContent = gameState.weather.wind.z.toFixed(1);
             document.getElementById('turbulence').textContent = gameState.weather.turbulence.toFixed(1);
         }
 
-        // Ejecta and Crater Spawning
         function spawnEjecta(position, mass) {
-            const ejectaCount = Math.min(Math.floor(mass * 0.2), 50000);
+            const ejectaCount = Math.min(Math.floor(mass * 0.15), 30000);
             for (let i = 0; i < ejectaCount; i++) {
                 const angle = Math.random() * 2 * Math.PI;
-                const speed = Math.random() * 15000 + 4000;
+                const speed = Math.random() * 12000 + 3000;
                 const idx = (particleIndex + i) % particleCount;
                 particlePositions[idx * 3] = position.x;
                 particlePositions[idx * 3 + 1] = position.y;
                 particlePositions[idx * 3 + 2] = position.z;
-                particleVelocities[idx * 3] = Math.cos(angle) * speed + gameState.weather.wind.x * 0.6;
-                particleVelocities[idx * 3 + 1] = Math.random() * 18000 + 8000;
-                particleVelocities[idx * 3 + 2] = Math.sin(angle) * speed + gameState.weather.wind.z * 0.6;
-                particleLifetimes[idx] = 10 + Math.random() * 10;
-                particleSizes[idx] = 1500 + Math.random() * 3000 * (mass / 1000000);
+                particleVelocities[idx * 3] = Math.cos(angle) * speed + gameState.weather.wind.x * 0.5;
+                particleVelocities[idx * 3 + 1] = Math.random() * 15000 + 6000;
+                particleVelocities[idx * 3 + 2] = Math.sin(angle) * speed + gameState.weather.wind.z * 0.5;
+                particleLifetimes[idx] = 8 + Math.random() * 8;
+                particleSizes[idx] = 1000 + Math.random() * 2000 * (mass / 1000000);
             }
             particleIndex = (particleIndex + ejectaCount) % particleCount;
 
@@ -512,16 +482,15 @@
             const crater = new THREE.Mesh(craterGeometry, craterMaterial.clone());
             crater.position.copy(position);
             crater.rotation.x = -Math.PI / 2;
-            crater.scale.set(1 + mass * 0.00008, 1 + mass * 0.00008, 1);
+            crater.scale.set(1 + mass * 0.00005, 1 + mass * 0.00005, 1);
             crater.receiveShadow = true;
             scene.add(crater);
-            craters.push({ mesh: crater, life: 25 });
+            craters.push({ mesh: crater, life: 20 });
 
             particleGeometry.attributes.position.needsUpdate = true;
             particleGeometry.attributes.size.needsUpdate = true;
         }
 
-        // UI Update
         function updateUI() {
             document.getElementById('metal').textContent = Math.floor(gameState.metal);
             document.getElementById('influence').textContent = Math.floor(gameState.influence);
@@ -538,7 +507,7 @@
             const alerts = document.getElementById('alerts');
             alerts.textContent = message;
             alerts.style.display = 'block';
-            setTimeout(() => alerts.style.display = 'none', 3000);
+            setTimeout(() => alerts.style.display = 'none', 2500);
         }
 
         // Animation Loop
@@ -551,8 +520,8 @@
             gameState.timePlayed += dtReal;
             if (gameState.timePlayed > 3600 * 3) gameState.phase = 2;
             if (gameState.timePlayed > 3600 * 7) gameState.phase = 3;
-            if (gameState.automation && gameState.target) launchStrike();
-            if (gameState.dyson) gameState.metal += dtReal * 60;
+            if (gameState.automation) dropRod();
+            if (gameState.dyson) gameState.metal += dtReal * 50;
 
             updateWeather();
 
@@ -569,16 +538,16 @@
                     // Physics
                     const gravity = new THREE.Vector3().sub(rod.position).normalize().multiplyScalar(G * M / (r * r));
                     let accel = gravity;
-                    if (altitude < 140000) {
-                        const density = Math.exp(-altitude / 7000) * 1.225;
+                    if (altitude < 130000) {
+                        const density = Math.exp(-altitude / 7200) * 1.225;
                         const vMag = rod.velocity.length();
-                        const drag = rod.velocity.clone().normalize().multiplyScalar(-0.5 * density * vMag * vMag * 0.02 / rod.mass);
+                        const drag = rod.velocity.clone().normalize().multiplyScalar(-0.5 * density * vMag * vMag * 0.018 / rod.mass);
                         accel.add(drag);
-                        accel.add(gameState.weather.wind.clone().multiplyScalar(0.12));
+                        accel.add(gameState.weather.wind.clone().multiplyScalar(0.1));
                         accel.add(new THREE.Vector3(
-                            (Math.random() - 0.5) * gameState.weather.turbulence * 1.5,
+                            (Math.random() - 0.5) * gameState.weather.turbulence,
                             0,
-                            (Math.random() - 0.5) * gameState.weather.turbulence * 1.5
+                            (Math.random() - 0.5) * gameState.weather.turbulence
                         ));
                     }
                     rod.velocity.add(accel.clone().multiplyScalar(dtReal * simSpeed));
@@ -594,11 +563,11 @@
                     rod.position.add(rod.velocity.clone().multiplyScalar(dtReal * simSpeed));
 
                     // Visual Effects
-                    rod.material.emissiveIntensity = Math.min(4, 140000 / Math.max(7000, altitude));
-                    rod.rotation.x += dtReal * 0.6;
-                    rod.rotation.z += dtReal * 0.4;
+                    rod.material.emissiveIntensity = Math.min(3, 130000 / Math.max(8000, altitude));
+                    rod.rotation.x += dtReal * 0.5;
+                    rod.rotation.z += dtReal * 0.3;
 
-                    // Update Rod Info
+                    // Update Rod Info (track closest rod to impact)
                     if (!rodInfoUpdated || timeToImpact < activeRod?.tti) {
                         activeRod = { rod, tti: timeToImpact };
                         const energy = 0.5 * rod.mass * rod.velocity.lengthSq() / 1e9;
@@ -610,9 +579,9 @@
                 }
 
                 // Impact
-                if (altitude <= 300) {
+                if (altitude <= 500) {
                     spawnEjecta(rod.position, rod.mass);
-                    earth.scale.multiplyScalar(1 - rod.mass * 0.00000002);
+                    earth.scale.multiplyScalar(1 - rod.mass * 0.000000015);
                     scene.remove(rod);
                     rods[index] = null;
                     updateGeopolitics();
@@ -629,7 +598,7 @@
             // Update Craters
             craters.forEach((crater, index) => {
                 crater.life -= dtReal;
-                crater.mesh.material.opacity = crater.life / 25;
+                crater.mesh.material.opacity = crater.life / 20;
                 if (crater.life <= 0) {
                     scene.remove(crater.mesh);
                     craters[index] = null;
@@ -640,12 +609,12 @@
             // Update Particles
             for (let i = 0; i < particleCount; i++) {
                 if (particleLifetimes[i] > 0) {
-                    particleVelocities[i * 3 + 1] -= 9.81 * dtReal * 12;
+                    particleVelocities[i * 3 + 1] -= 9.81 * dtReal * 10;
                     particlePositions[i * 3] += particleVelocities[i * 3] * dtReal;
                     particlePositions[i * 3 + 1] += particleVelocities[i * 3 + 1] * dtReal;
                     particlePositions[i * 3 + 2] += particleVelocities[i * 3 + 2] * dtReal;
                     particleLifetimes[i] -= dtReal;
-                    particleSizes[i] *= 0.97;
+                    particleSizes[i] *= 0.98;
                     if (particleLifetimes[i] <= 0 || particlePositions[i * 3 + 1] < earthRadius) {
                         particlePositions[i * 3] = 0;
                         particlePositions[i * 3 + 1] = 0;
@@ -658,14 +627,14 @@
             particleGeometry.attributes.size.needsUpdate = true;
 
             // Scene Updates
-            earth.rotation.y += dtReal * 0.01;
-            clouds.rotation.y += dtReal * 0.015;
+            earth.rotation.y += dtReal * 0.02;
+            clouds.rotation.y += dtReal * 0.025;
             atmosphereMaterial.uniforms.time.value = time / 1000;
             particleMaterial.uniforms.time.value = time / 1000;
 
             // Camera Orbit
-            camera.position.x = Math.sin(gameState.timePlayed * 0.005) * 35000000;
-            camera.position.z = Math.cos(gameState.timePlayed * 0.005) * 35000000;
+            camera.position.x = Math.sin(gameState.timePlayed * 0.01) * 30000000;
+            camera.position.z = Math.cos(gameState.timePlayed * 0.01) * 30000000;
             camera.lookAt(earth.position);
 
             renderer.render(scene, camera);
