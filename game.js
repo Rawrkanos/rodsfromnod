@@ -7,6 +7,7 @@ let gravity = 9.81;
 let airDensity = 1.225;
 let dragCoefficient = 0.82; // Adjusted for tungsten rod
 let impactData = null;
+let lastFrameTime = performance.now();
 
 async function initWebGPU() {
     canvas = document.getElementById('gameCanvas');
@@ -40,6 +41,7 @@ function calculatePhysics(deltaTime) {
     rod.position[1] -= rod.velocity * deltaTime;
     
     if (rod.position[1] <= 0) {
+        rod.position[1] = 0;
         impactData = calculateImpact();
     }
 }
@@ -52,31 +54,36 @@ function calculateImpact() {
 }
 
 function render() {
+    let now = performance.now();
+    let deltaTime = (now - lastFrameTime) / 1000;
+    lastFrameTime = now;
+    
     if (!context) return;
     
     let commandEncoder = device.createCommandEncoder();
     let renderPass = commandEncoder.beginRenderPass({
         colorAttachments: [{
             view: context.getCurrentTexture().createView(),
-            loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 1]
+            loadOp: 'clear', storeOp: 'store', clearValue: [0.1, 0.1, 0.1, 1]
         }]
     });
+    
     renderPass.setPipeline(pipeline);
     renderPass.draw(3, 1, 0, 0);
     renderPass.end();
     device.queue.submit([commandEncoder.finish()]);
+    
+    if (rod.position[1] > 0) {
+        calculatePhysics(deltaTime);
+    }
+    
     requestAnimationFrame(render);
 }
 
 document.getElementById('dropButton').addEventListener('click', () => {
-    let interval = setInterval(() => {
-        if (rod.position[1] <= 0) {
-            clearInterval(interval);
-            console.log("Impact Data:", impactData);
-        } else {
-            calculatePhysics(0.1);
-        }
-    }, 100);
+    rod.velocity = 0;
+    rod.position[1] = rod.altitude;
+    impactData = null;
 });
 
 window.onload = initWebGPU;
