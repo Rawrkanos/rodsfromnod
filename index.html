@@ -2,97 +2,123 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rods from God: Orbital Dominion</title>
     <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            background: #000;
-            font-family: Arial, sans-serif;
-        }
-        canvas {
-            display: block;
-        }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Orbitron', sans-serif; }
+        canvas { width: 100vw; height: 100vh; display: block; }
         #ui {
-            position: absolute;
-            top: 0;
-            left: 0;
-            color: #00ff00;
-            padding: 10px;
-            pointer-events: none;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            color: #0f0; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between;
         }
-        #resources, #controls, #rod-status {
-            background: rgba(0, 0, 0, 0.7);
-            margin-bottom: 10px;
-            padding: 10px;
-            pointer-events: all;
+        #resources { padding: 20px; background: rgba(0, 0, 0, 0.85); pointer-events: all; border-bottom: 2px solid #0f0; }
+        #resources span { margin-right: 25px; font-size: 22px; text-shadow: 0 0 10px #0f0; }
+        #controls { display: flex; flex-wrap: wrap; padding: 20px; background: rgba(0, 0, 0, 0.85); pointer-events: all; }
+        #controls button {
+            margin: 10px; padding: 15px 30px; background: #111; color: #0f0; border: 2px solid #0f0;
+            cursor: pointer; font-size: 20px; transition: all 0.3s; text-transform: uppercase; border-radius: 8px;
+            box-shadow: 0 0 5px #0f0 inset;
         }
-        button {
-            background: #111;
-            color: #00ff00;
-            border: 1px solid #00ff00;
-            padding: 5px 10px;
-            margin: 5px;
-            cursor: pointer;
-            transition: background 0.3s;
+        #controls button:hover { background: #0f0; color: #000; box-shadow: 0 0 20px #0f0; }
+        #status { padding: 20px; background: rgba(0, 0, 0, 0.85); text-align: center; font-size: 22px; border-top: 2px solid #0f0; }
+        #map {
+            position: absolute; bottom: 30px; right: 30px; width: 450px; padding: 20px;
+            background: rgba(0, 0, 0, 0.9); border: 3px solid #0f0; font-size: 18px; border-radius: 10px;
+            box-shadow: 0 0 15px #0f0;
         }
-        button:hover {
-            background: #00ff00;
-            color: #000;
+        #map div { margin: 10px 0; }
+        #rod-info {
+            position: absolute; top: 40%; left: 30px; width: 300px; padding: 15px;
+            background: rgba(0, 0, 0, 0.8); font-size: 20px; text-shadow: 0 0 8px #0f0; border: 2px solid #0f0;
+            border-radius: 5px;
         }
-        #targeting-info {
-            position: absolute;
-            bottom: 10px;
-            right: 10px;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 10px;
-            color: #00ff00;
+        #weather-info {
+            position: absolute; top: 60%; left: 30px; width: 300px; padding: 15px;
+            background: rgba(0, 0, 0, 0.8); font-size: 18px; text-shadow: 0 0 8px #0f0; border: 2px solid #0f0;
+            border-radius: 5px;
         }
+        #alerts {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(255, 0, 0, 0.8); padding: 25px; font-size: 28px; text-align: center;
+            border: 3px solid #f00; display: none; color: #fff; text-shadow: 0 0 15px #f00; border-radius: 10px;
+            box-shadow: 0 0 20px #f00;
+        }
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas"></canvas>
+    <canvas id="canvas"></canvas>
     <div id="ui">
         <div id="resources">
-            Metal: <span id="metal">0</span> | Energy: <span id="energy">100</span>
+            <span>Metal: <span id="metal">0</span></span>
+            <span>Influence: <span id="influence">0</span></span>
+            <span>Tech: <span id="tech">0</span></span>
         </div>
         <div id="controls">
-            <button onclick="launchRod()">Launch Rod (50 Energy)</button>
-            <button onclick="generateResources()">Generate Resources (+10 Metal, +20 Energy)</button>
-            <button onclick="toggleTargeting()">Toggle Targeting</button>
+            <button onclick="launchStrike()">Launch Kinetic Strike</button>
+            <button onclick="upgradeSatellites()">Deploy Satellite (50 Metal)</button>
+            <button onclick="upgradeRods()">Increase Rods (100 Metal)</button>
+            <button onclick="upgradePower()">Enhance Payload (150 Metal)</button>
+            <button onclick="unlockAutomation()">Activate AI Control (200 Tech)</button>
+            <button onclick="unlockPrecision()">Precision Guidance (500 Tech)</button>
+            <button onclick="unlockStealth()">Stealth Tech (1000 Tech)</button>
+            <button onclick="buildDyson()">Construct Dyson Swarm (10K Tech)</button>
+            <button onclick="buildColossus()">Forge Rod Colossus (50K Tech)</button>
+            <button onclick="generateMetal()">Generate Metal (+10)</button>
+            <button onclick="resetWorld()">Initiate Orbital Reset</button>
         </div>
-        <div id="rod-status">
-            Active Rod: <br>
-            Altitude: <span id="rod-altitude">N/A</span> km | 
-            Speed: <span id="rod-speed">N/A</span> m/s | 
-            Time to Impact: <span id="rod-time">N/A</span> s
+        <div id="status">
+            Phase: <span id="phase">1</span> | Time: <span id="time">0</span>h | 
+            Satellites: <span id="satellites">1</span> | Rods/Drop: <span id="rods">1</span> | 
+            Power: <span id="rodPower">1</span> | Defenses: <span id="defenses">0</span>%
         </div>
-        <div id="targeting-info">
-            Targeting Mode: <span id="targeting-mode">Off</span><br>
-            Target: <span id="target-coords">None</span>
+        <div id="map">
+            <div>Geopolitical Theater:</div>
+            <div>USA: <span id="usa">100</span>% Stability</div>
+            <div>China: <span id="china">100</span>% Stability</div>
+            <div>Russia: <span id="russia">100</span>% Stability</div>
+            <div>EU: <span id="eu">100</span>% Stability</div>
+            <div>Global Alert Level: <span id="alert-level">Low</span></div>
         </div>
+        <div id="rod-info">
+            Active Rod Status:<br>
+            Height: <span id="rod-height">N/A</span> km<br>
+            Energy: <span id="rod-energy">N/A</span> GJ<br>
+            Time to Impact: <span id="rod-tti">N/A</span> s
+        </div>
+        <div id="weather-info">
+            Orbital Weather:<br>
+            Wind X: <span id="wind-x">0</span> m/s<br>
+            Wind Z: <span id="wind-z">0</span> m/s<br>
+            Turbulence: <span id="turbulence">0</span> units
+        </div>
+        <div id="alerts"></div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js" integrity="sha512-334uBDwY0iZ2TklV1OtDtBW9vp7jjP7SWRzT7Ehu1fdtPIjTpCwTSFb8HI/YBau9L1/kRBEOALrS229Kry4yFQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
     <script>
-        // Core Game State
-        const state = {
-            metal: 0,
-            energy: 100,
-            rods: [],
-            targetingMode: false,
-            target: null
+        // Game State
+        let gameState = {
+            metal: 0, influence: 0, tech: 0,
+            satellites: 1, rods: 1, rodPower: 1,
+            automation: false, precision: false, stealth: false, dyson: false, colossus: false,
+            phase: 1, timePlayed: 0, lastDrop: 0,
+            nations: { usa: 100, china: 100, russia: 100, eu: 100 },
+            defenses: 0,
+            weather: { wind: new THREE.Vector3(0, 0, 0), turbulence: 0 },
+            alertLevel: "Low",
+            target: null // Targeting coordinates
         };
 
-        // Scene Setup
+        // Three.js Setup
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000000);
-        camera.position.set(0, 8000000, 12000000);
-        const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gameCanvas') });
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 200000000);
+        camera.position.set(0, 15000000, 30000000);
+        const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas'), antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x000000);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-        // Handle Window Resize
         window.addEventListener('resize', () => {
             renderer.setSize(window.innerWidth, window.innerHeight);
             camera.aspect = window.innerWidth / window.innerHeight;
@@ -100,214 +126,553 @@
         });
 
         // Earth
-        const earthRadius = 6371000; // Earth's radius in meters
-        const earth = new THREE.Mesh(
-            new THREE.SphereGeometry(earthRadius, 64, 64),
-            new THREE.MeshPhongMaterial({
-                color: 0x0066cc,
-                shininess: 50,
-                map: new THREE.TextureLoader().load('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg')
-            })
-        );
+        const earthRadius = 6371000;
+        const earthGeometry = new THREE.SphereGeometry(earthRadius, 512, 512);
+        const earthMaterial = new THREE.MeshPhongMaterial({
+            color: 0x0066cc,
+            shininess: 100,
+            specular: 0x555555,
+            map: new THREE.TextureLoader().load('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg'),
+            bumpMap: new THREE.TextureLoader().load('https://threejs.org/examples/textures/planets/earth_bump_2048.jpg'),
+            bumpScale: 20000,
+            displacementMap: new THREE.TextureLoader().load('https://threejs.org/examples/textures/planets/earth_bump_2048.jpg'),
+            displacementScale: 25000
+        });
+        const earth = new THREE.Mesh(earthGeometry, earthMaterial);
+        earth.receiveShadow = true;
         scene.add(earth);
 
         // Atmosphere
-        const atmosphere = new THREE.Mesh(
-            new THREE.SphereGeometry(earthRadius * 1.015, 64, 64),
-            new THREE.MeshBasicMaterial({
-                color: 0x00ccff,
-                transparent: true,
-                opacity: 0.3,
-                side: THREE.BackSide
-            })
-        );
+        const atmosphereGeometry = new THREE.SphereGeometry(earthRadius * 1.025, 512, 512);
+        const atmosphereMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0 },
+                glowColor: { value: new THREE.Color(0x00ccff) },
+                intensity: { value: 0.7 }
+            },
+            vertexShader: `
+                varying vec3 vNormal;
+                varying vec3 vPosition;
+                void main() {
+                    vNormal = normalize(normalMatrix * normal);
+                    vPosition = position;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float time;
+                uniform vec3 glowColor;
+                uniform float intensity;
+                varying vec3 vNormal;
+                varying vec3 vPosition;
+                void main() {
+                    float glow = pow(0.9 - dot(vNormal, vec3(0, 0, 1)), 4.0) * intensity;
+                    gl_FragColor = vec4(glowColor, glow * (0.85 + 0.15 * sin(time * 2.0)));
+                }
+            `,
+            side: THREE.BackSide,
+            blending: THREE.AdditiveBlending,
+            transparent: true
+        });
+        const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
         scene.add(atmosphere);
 
+        // Clouds
+        const cloudGeometry = new THREE.SphereGeometry(earthRadius * 1.015, 512, 512);
+        const cloudMaterial = new THREE.MeshPhongMaterial({
+            map: new THREE.TextureLoader().load('https://threejs.org/examples/textures/planets/earth_clouds_2048.png'),
+            transparent: true,
+            opacity: 0.8,
+            depthWrite: false
+        });
+        const clouds = new THREE.Mesh(cloudGeometry, cloudMaterial);
+        scene.add(clouds);
+
         // Lighting
-        const sunlight = new THREE.DirectionalLight(0xffffff, 1);
-        sunlight.position.set(10000000, 10000000, 10000000);
-        scene.add(sunlight);
-        scene.add(new THREE.AmbientLight(0x222222));
+        const sunLight = new THREE.DirectionalLight(0xffffff, 1.4);
+        sunLight.position.set(200000000, 200000000, 200000000);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 4096;
+        sunLight.shadow.mapSize.height = 4096;
+        sunLight.shadow.camera.near = 1000000;
+        sunLight.shadow.camera.far = 400000000;
+        sunLight.shadow.camera.left = -60000000;
+        sunLight.shadow.camera.right = 60000000;
+        sunLight.shadow.camera.top = 60000000;
+        sunLight.shadow.camera.bottom = -60000000;
+        scene.add(sunLight);
+        scene.add(new THREE.AmbientLight(0x333333));
 
-        // Rod Template
-        const rodGeometry = new THREE.CylinderGeometry(200, 200, 3000, 32);
-        const rodMaterial = new THREE.MeshPhongMaterial({ color: 0xffaa00, emissive: 0xff5500, emissiveIntensity: 0 });
+        // Rods
+        const rodGeometry = new THREE.CylinderGeometry(350, 350, 5000, 128, 1, true);
+        const rodMaterial = new THREE.MeshPhongMaterial({
+            color: 0xaaaaaa,
+            emissive: 0xff5500,
+            emissiveIntensity: 0,
+            shininess: 150,
+            specular: 0x666666,
+            side: THREE.DoubleSide
+        });
+        const rods = [];
 
-        // Particle System for Ejecta
-        const particleCount = 5000;
-        const particles = new THREE.Points(
-            new THREE.BufferGeometry(),
-            new THREE.PointsMaterial({ color: 0xccaa77, size: 500, transparent: true, blending: THREE.AdditiveBlending })
-        );
+        // Impact Craters
+        const craterGeometry = new THREE.PlaneGeometry(60000, 60000, 128, 128);
+        const craterMaterial = new THREE.MeshPhongMaterial({
+            color: 0x222222,
+            shininess: 5,
+            transparent: true,
+            opacity: 0.9,
+            blending: THREE.NormalBlending
+        });
+        const craters = [];
+
+        // Ejecta Particles
+        const particleCount = 150000;
+        const particleGeometry = new THREE.BufferGeometry();
         const particlePositions = new Float32Array(particleCount * 3);
         const particleVelocities = new Float32Array(particleCount * 3);
-        const particleLives = new Float32Array(particleCount);
-        particles.geometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+        const particleLifetimes = new Float32Array(particleCount);
+        const particleSizes = new Float32Array(particleCount);
+        particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+        particleGeometry.setAttribute('size', new THREE.BufferAttribute(particleSizes, 1));
+        const particleMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0 },
+                baseColor: { value: new THREE.Color(0xccaa77) }
+            },
+            vertexShader: `
+                attribute float size;
+                varying float vLife;
+                void main() {
+                    vLife = size > 0.0 ? 1.0 : 0.0;
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    gl_PointSize = size * (400.0 / -mvPosition.z);
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `,
+            fragmentShader: `
+                uniform float time;
+                uniform vec3 baseColor;
+                varying float vLife;
+                void main() {
+                    if (vLife < 0.1) discard;
+                    float alpha = vLife * (0.9 + 0.1 * sin(time * 4.0));
+                    gl_FragColor = vec4(baseColor, alpha);
+                }
+            `,
+            transparent: true,
+            blending: THREE.AdditiveBlending
+        });
+        const particles = new THREE.Points(particleGeometry, particleMaterial);
         scene.add(particles);
-        let particleSpawnIndex = 0;
+        let particleIndex = 0;
 
         // Physics Constants
-        const gravityConstant = 6.67430e-11; // m³ kg⁻¹ s⁻²
-        const earthMass = 5.972e24; // kg
+        const G = 6.67430e-11;
+        const M = 5.972e24;
 
-        // Raycaster for Targeting
+        // Targeting System
         const raycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
+        let targetMarker = new THREE.Mesh(new THREE.SphereGeometry(50000, 32, 32), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+        scene.add(targetMarker);
+        targetMarker.visible = false;
 
-        // Targeting Click Handler
-        window.addEventListener('click', (event) => {
-            if (!state.targetingMode) return;
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        function setTarget(event) {
+            const mouse = new THREE.Vector2(
+                (event.clientX / window.innerWidth) * 2 - 1,
+                -(event.clientY / window.innerHeight) * 2 + 1
+            );
             raycaster.setFromCamera(mouse, camera);
             const intersects = raycaster.intersectObject(earth);
             if (intersects.length > 0) {
-                state.target = intersects[0].point.clone();
-                document.getElementById('target-coords').textContent = 
-                    `X: ${state.target.x.toFixed(0)}, Z: ${state.target.z.toFixed(0)}`;
+                gameState.target = intersects[0].point.clone().normalize().multiplyScalar(earthRadius);
+                targetMarker.position.copy(gameState.target);
+                targetMarker.visible = true;
             }
-        });
+        }
 
-        // Game Functions
-        function launchRod() {
-            if (state.energy < 50) return;
-            state.energy -= 50;
+        document.addEventListener('click', setTarget);
 
-            const rod = new THREE.Mesh(rodGeometry, rodMaterial.clone());
-            const startHeight = 20000000; // 20,000 km altitude
-            const direction = state.target ? 
-                state.target.clone().normalize() : 
-                new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
-            rod.position.copy(direction.multiplyScalar(startHeight));
-            rod.velocity = direction.clone().multiplyScalar(-15000); // Initial velocity: 15 km/s
-            rod.mass = 10000; // 10 tons
-            scene.add(rod);
-            state.rods.push(rod);
-
+        // Game Logic
+        function launchStrike() {
+            if (Date.now() - gameState.lastDrop < 10000 / gameState.satellites) return;
+            if (gameState.defenses > Math.random() * 100 && !gameState.stealth) {
+                showAlert("Strike intercepted by planetary defenses!");
+                return;
+            }
+            if (!gameState.target) {
+                showAlert("Select a target first!");
+                return;
+            }
+            gameState.lastDrop = Date.now();
+            const dropCount = gameState.colossus && Math.random() < 0.25 ? 1 : gameState.rods;
+            for (let i = 0; i < dropCount; i++) {
+                const rod = new THREE.Mesh(rodGeometry, rodMaterial.clone());
+                const startPos = gameState.target.clone().normalize().multiplyScalar(36000000);
+                rod.position.copy(startPos);
+                const direction = gameState.target.clone().sub(startPos).normalize();
+                rod.velocity = direction.multiplyScalar(-22000);
+                rod.mass = gameState.colossus && i === 0 ? 4000000 : 1000 * gameState.rodPower;
+                rod.scale.set(1 + rod.mass * 0.001, 1 + rod.mass * 0.001, 1 + rod.mass * 0.001);
+                rod.castShadow = true;
+                scene.add(rod);
+                rods.push(rod);
+            }
+            gameState.metal += 50 * gameState.rodPower * dropCount;
+            gameState.influence += 30 * gameState.rodPower * dropCount;
+            gameState.tech += 20 * gameState.rodPower * dropCount;
             updateUI();
         }
 
-        function generateResources() {
-            state.metal += 10;
-            state.energy += 20;
+        // Upgrade and Unlock Functions
+        function upgradeSatellites() {
+            if (gameState.metal >= 50) {
+                gameState.metal -= 50;
+                gameState.satellites += 1;
+                updateUI();
+            }
+        }
+
+        function upgradeRods() {
+            if (gameState.metal >= 100) {
+                gameState.metal -= 100;
+                gameState.rods += 1;
+                updateUI();
+            }
+        }
+
+        function upgradePower() {
+            if (gameState.metal >= 150) {
+                gameState.metal -= 150;
+                gameState.rodPower *= 1.35;
+                updateUI();
+            }
+        }
+
+        function unlockAutomation() {
+            if (gameState.tech >= 200 && !gameState.automation) {
+                gameState.tech -= 200;
+                gameState.automation = true;
+                showAlert("AI Control systems online.");
+                updateUI();
+            }
+        }
+
+        function unlockPrecision() {
+            if (gameState.tech >= 500 && !gameState.precision) {
+                gameState.tech -= 500;
+                gameState.precision = true;
+                showAlert("Precision targeting acquired.");
+                updateUI();
+            }
+        }
+
+        function unlockStealth() {
+            if (gameState.tech >= 1000 && !gameState.stealth) {
+                gameState.tech -= 1000;
+                gameState.stealth = true;
+                showAlert("Stealth technology deployed - defenses bypassed.");
+                updateUI();
+            }
+        }
+
+        function buildDyson() {
+            if (gameState.tech >= 10000 && !gameState.dyson) {
+                gameState.tech -= 10000;
+                gameState.dyson = true;
+                showAlert("Dyson Swarm operational - resource influx engaged.");
+                updateUI();
+            }
+        }
+
+        function buildColossus() {
+            if (gameState.tech >= 50000 && !gameState.colossus) {
+                gameState.tech -= 50000;
+                gameState.colossus = true;
+                showAlert("Rod Colossus forged - prepare for planetary devastation.");
+                updateUI();
+            }
+        }
+
+        function generateMetal() {
+            gameState.metal += 10;
             updateUI();
         }
 
-        function toggleTargeting() {
-            state.targetingMode = !state.targetingMode;
-            document.getElementById('targeting-mode').textContent = state.targetingMode ? 'On' : 'Off';
+        function resetWorld() {
+            if (gameState.phase >= 3) {
+                gameState.metal *= 5;
+                gameState.influence *= 5;
+                gameState.tech *= 5;
+                gameState.satellites = 1;
+                gameState.rods = 1;
+                gameState.rodPower = 1;
+                gameState.automation = false;
+                gameState.precision = false;
+                gameState.stealth = false;
+                gameState.dyson = false;
+                gameState.colossus = false;
+                gameState.phase = 1;
+                gameState.timePlayed = 0;
+                gameState.lastDrop = 0;
+                gameState.nations = { usa: 100, china: 100, russia: 100, eu: 100 };
+                gameState.defenses = 0;
+                gameState.alertLevel = "Low";
+                gameState.target = null;
+                rods.forEach(rod => scene.remove(rod));
+                rods.length = 0;
+                craters.forEach(crater => scene.remove(crater));
+                craters.length = 0;
+                particleIndex = 0;
+                for (let i = 0; i < particleCount * 3; i++) {
+                    particlePositions[i] = 0;
+                    particleVelocities[i] = 0;
+                }
+                for (let i = 0; i < particleCount; i++) {
+                    particleSizes[i] = 0;
+                    particleLifetimes[i] = 0;
+                }
+                particleGeometry.attributes.position.needsUpdate = true;
+                particleGeometry.attributes.size.needsUpdate = true;
+                earth.scale.set(1, 1, 1);
+                updateUI();
+                showAlert("Orbital Reset executed - dominion reborn.");
+            }
         }
 
-        function spawnEjecta(impactPosition) {
-            const ejectaCount = 1000;
+        // Geopolitics and Weather Updates
+        function updateGeopolitics() {
+            if (gameState.phase >= 2) {
+                for (let nation in gameState.nations) {
+                    gameState.nations[nation] -= gameState.rodPower * gameState.rods * 0.4;
+                    if (gameState.nations[nation] <= 0) gameState.nations[nation] = 0;
+                }
+                if (gameState.phase === 3) {
+                    gameState.defenses += 0.04;
+                    if (Math.random() < 0.3) {
+                        const rod = new THREE.Mesh(rodGeometry, rodMaterial.clone());
+                        const randomPos = new THREE.Vector3(
+                            Math.random() * 800000 - 400000,
+                            36000000,
+                            Math.random() * 800000 - 400000
+                        );
+                        rod.position.copy(randomPos);
+                        const direction = earth.position.clone().sub(randomPos).normalize();
+                        rod.velocity = direction.multiplyScalar(-18000);
+                        rod.mass = 2500;
+                        rod.scale.set(1.8, 1.8, 1.8);
+                        rod.castShadow = true;
+                        scene.add(rod);
+                        rods.push(rod);
+                        showAlert("Enemy counterstrike launched!");
+                    }
+                }
+                const totalStability = Object.values(gameState.nations).reduce((a, b) => a + b, 0);
+                gameState.alertLevel = totalStability > 200 ? "Low" : totalStability > 100 ? "Moderate" : "Critical";
+                document.getElementById('alert-level').textContent = gameState.alertLevel;
+            }
+            document.getElementById('usa').textContent = Math.floor(gameState.nations.usa);
+            document.getElementById('china').textContent = Math.floor(gameState.nations.china);
+            document.getElementById('russia').textContent = Math.floor(gameState.nations.russia);
+            document.getElementById('eu').textContent = Math.floor(gameState.nations.eu);
+            document.getElementById('defenses').textContent = Math.floor(gameState.defenses);
+        }
+
+        function updateWeather() {
+            gameState.weather.wind.set(
+                Math.sin(gameState.timePlayed * 0.02) * 100,
+                0,
+                Math.cos(gameState.timePlayed * 0.02) * 100
+            );
+            gameState.weather.turbulence = Math.random() * 20;
+            document.getElementById('wind-x').textContent = gameState.weather.wind.x.toFixed(1);
+            document.getElementById('wind-z').textContent = gameState.weather.wind.z.toFixed(1);
+            document.getElementById('turbulence').textContent = gameState.weather.turbulence.toFixed(1);
+        }
+
+        // Ejecta and Crater Spawning
+        function spawnEjecta(position, mass) {
+            const ejectaCount = Math.min(Math.floor(mass * 0.2), 50000);
             for (let i = 0; i < ejectaCount; i++) {
-                const idx = (particleSpawnIndex + i) % particleCount;
-                const angle = Math.random() * Math.PI * 2;
-                const speed = 3000 + Math.random() * 5000;
-                particlePositions[idx * 3] = impactPosition.x;
-                particlePositions[idx * 3 + 1] = impactPosition.y;
-                particlePositions[idx * 3 + 2] = impactPosition.z;
-                particleVelocities[idx * 3] = Math.cos(angle) * speed;
-                particleVelocities[idx * 3 + 1] = 2000 + Math.random() * 4000;
-                particleVelocities[idx * 3 + 2] = Math.sin(angle) * speed;
-                particleLives[idx] = 5 + Math.random() * 5;
+                const angle = Math.random() * 2 * Math.PI;
+                const speed = Math.random() * 15000 + 4000;
+                const idx = (particleIndex + i) % particleCount;
+                particlePositions[idx * 3] = position.x;
+                particlePositions[idx * 3 + 1] = position.y;
+                particlePositions[idx * 3 + 2] = position.z;
+                particleVelocities[idx * 3] = Math.cos(angle) * speed + gameState.weather.wind.x * 0.6;
+                particleVelocities[idx * 3 + 1] = Math.random() * 18000 + 8000;
+                particleVelocities[idx * 3 + 2] = Math.sin(angle) * speed + gameState.weather.wind.z * 0.6;
+                particleLifetimes[idx] = 10 + Math.random() * 10;
+                particleSizes[idx] = 1500 + Math.random() * 3000 * (mass / 1000000);
             }
-            particleSpawnIndex = (particleSpawnIndex + ejectaCount) % particleCount;
-            particles.geometry.attributes.position.needsUpdate = true;
+            particleIndex = (particleIndex + ejectaCount) % particleCount;
+
+            // Add Crater
+            const crater = new THREE.Mesh(craterGeometry, craterMaterial.clone());
+            crater.position.copy(position);
+            crater.rotation.x = -Math.PI / 2;
+            crater.scale.set(1 + mass * 0.00008, 1 + mass * 0.00008, 1);
+            crater.receiveShadow = true;
+            scene.add(crater);
+            craters.push({ mesh: crater, life: 25 });
+
+            particleGeometry.attributes.position.needsUpdate = true;
+            particleGeometry.attributes.size.needsUpdate = true;
         }
 
+        // UI Update
         function updateUI() {
-            document.getElementById('metal').textContent = state.metal;
-            document.getElementById('energy').textContent = state.energy;
+            document.getElementById('metal').textContent = Math.floor(gameState.metal);
+            document.getElementById('influence').textContent = Math.floor(gameState.influence);
+            document.getElementById('tech').textContent = Math.floor(gameState.tech);
+            document.getElementById('satellites').textContent = gameState.satellites;
+            document.getElementById('rods').textContent = gameState.rods;
+            document.getElementById('rodPower').textContent = gameState.rodPower.toFixed(2);
+            document.getElementById('phase').textContent = gameState.phase;
+            document.getElementById('time').textContent = (gameState.timePlayed / 3600).toFixed(1);
+            document.getElementById('defenses').textContent = Math.floor(gameState.defenses);
+        }
+
+        function showAlert(message) {
+            const alerts = document.getElementById('alerts');
+            alerts.textContent = message;
+            alerts.style.display = 'block';
+            setTimeout(() => alerts.style.display = 'none', 3000);
         }
 
         // Animation Loop
         let lastTime = performance.now();
+        let activeRod = null;
         function animate(time) {
-            const deltaTime = (time - lastTime) / 1000;
+            const dtReal = Math.min((time - lastTime) / 1000, 0.1);
             lastTime = time;
 
-            // Rotate Earth
-            earth.rotation.y += deltaTime * 0.05;
-            atmosphere.rotation.y += deltaTime * 0.05;
+            gameState.timePlayed += dtReal;
+            if (gameState.timePlayed > 3600 * 3) gameState.phase = 2;
+            if (gameState.timePlayed > 3600 * 7) gameState.phase = 3;
+            if (gameState.automation && gameState.target) launchStrike();
+            if (gameState.dyson) gameState.metal += dtReal * 60;
+
+            updateWeather();
 
             // Update Rods
-            let rodStatusUpdated = false;
-            state.rods.forEach((rod, index) => {
+            let rodInfoUpdated = false;
+            rods.forEach((rod, index) => {
                 if (!rod) return;
 
-                const distance = rod.position.length();
-                const altitude = distance - earthRadius;
+                const r = rod.position.length();
+                const altitude = r - earthRadius;
+                let simSpeed = 10;
 
                 if (altitude > 0) {
-                    // Apply gravity
-                    const gravitationalForce = gravityConstant * earthMass / (distance * distance);
-                    const gravity = rod.position.clone().normalize().multiplyScalar(-gravitationalForce);
-                    rod.velocity.add(gravity.multiplyScalar(deltaTime));
-
-                    // Simple drag in atmosphere (below 100 km)
-                    if (altitude < 100000) {
-                        const dragFactor = 0.0005 * Math.exp(-altitude / 10000);
-                        rod.velocity.multiplyScalar(1 - dragFactor);
-                        rod.material.emissiveIntensity = Math.min(2, 100000 / altitude);
+                    // Physics
+                    const gravity = new THREE.Vector3().sub(rod.position).normalize().multiplyScalar(G * M / (r * r));
+                    let accel = gravity;
+                    if (altitude < 140000) {
+                        const density = Math.exp(-altitude / 7000) * 1.225;
+                        const vMag = rod.velocity.length();
+                        const drag = rod.velocity.clone().normalize().multiplyScalar(-0.5 * density * vMag * vMag * 0.02 / rod.mass);
+                        accel.add(drag);
+                        accel.add(gameState.weather.wind.clone().multiplyScalar(0.12));
+                        accel.add(new THREE.Vector3(
+                            (Math.random() - 0.5) * gameState.weather.turbulence * 1.5,
+                            0,
+                            (Math.random() - 0.5) * gameState.weather.turbulence * 1.5
+                        ));
                     }
+                    rod.velocity.add(accel.clone().multiplyScalar(dtReal * simSpeed));
 
-                    // Update position
-                    rod.position.add(rod.velocity.clone().multiplyScalar(deltaTime));
-                    rod.rotation.x += deltaTime * 0.8;
-                    rod.rotation.z += deltaTime * 0.6;
-
-                    // Update rod status (closest to impact)
-                    if (!rodStatusUpdated) {
-                        const speed = rod.velocity.length();
-                        const timeToImpact = altitude / speed;
-                        document.getElementById('rod-altitude').textContent = (altitude / 1000).toFixed(2);
-                        document.getElementById('rod-speed').textContent = speed.toFixed(0);
-                        document.getElementById('rod-time').textContent = timeToImpact.toFixed(2);
-                        rodStatusUpdated = true;
+                    // Dynamic Simulation Speed
+                    const timeToImpact = -altitude / rod.velocity.y;
+                    if (timeToImpact <= 5) {
+                        simSpeed = Math.max(1, simSpeed * (timeToImpact / 5));
+                        if (timeToImpact <= 0.5) {
+                            simSpeed = Math.max(0.1, simSpeed * (timeToImpact / 0.5));
+                        }
                     }
-                } else {
-                    // Impact
-                    spawnEjecta(rod.position);
+                    rod.position.add(rod.velocity.clone().multiplyScalar(dtReal * simSpeed));
+
+                    // Visual Effects
+                    rod.material.emissiveIntensity = Math.min(4, 140000 / Math.max(7000, altitude));
+                    rod.rotation.x += dtReal * 0.6;
+                    rod.rotation.z += dtReal * 0.4;
+
+                    // Update Rod Info
+                    if (!rodInfoUpdated || timeToImpact < activeRod?.tti) {
+                        activeRod = { rod, tti: timeToImpact };
+                        const energy = 0.5 * rod.mass * rod.velocity.lengthSq() / 1e9;
+                        document.getElementById('rod-height').textContent = (altitude / 1000).toFixed(2);
+                        document.getElementById('rod-energy').textContent = energy.toFixed(2);
+                        document.getElementById('rod-tti').textContent = timeToImpact.toFixed(2);
+                        rodInfoUpdated = true;
+                    }
+                }
+
+                // Impact
+                if (altitude <= 300) {
+                    spawnEjecta(rod.position, rod.mass);
+                    earth.scale.multiplyScalar(1 - rod.mass * 0.00000002);
                     scene.remove(rod);
-                    state.rods[index] = null;
+                    rods[index] = null;
+                    updateGeopolitics();
                 }
             });
-            state.rods = state.rods.filter(r => r !== null);
-
-            if (!rodStatusUpdated) {
-                document.getElementById('rod-altitude').textContent = 'N/A';
-                document.getElementById('rod-speed').textContent = 'N/A';
-                document.getElementById('rod-time').textContent = 'N/A';
+            rods = rods.filter(r => r !== null);
+            if (!rodInfoUpdated) {
+                document.getElementById('rod-height').textContent = "N/A";
+                document.getElementById('rod-energy').textContent = "N/A";
+                document.getElementById('rod-tti').textContent = "N/A";
+                activeRod = null;
             }
+
+            // Update Craters
+            craters.forEach((crater, index) => {
+                crater.life -= dtReal;
+                crater.mesh.material.opacity = crater.life / 25;
+                if (crater.life <= 0) {
+                    scene.remove(crater.mesh);
+                    craters[index] = null;
+                }
+            });
+            craters = craters.filter(c => c !== null);
 
             // Update Particles
             for (let i = 0; i < particleCount; i++) {
-                if (particleLives[i] > 0) {
-                    particleVelocities[i * 3 + 1] -= 9.81 * deltaTime; // Gravity
-                    particlePositions[i * 3] += particleVelocities[i * 3] * deltaTime;
-                    particlePositions[i * 3 + 1] += particleVelocities[i * 3 + 1] * deltaTime;
-                    particlePositions[i * 3 + 2] += particleVelocities[i * 3 + 2] * deltaTime;
-                    particleLives[i] -= deltaTime;
-                    if (particleLives[i] <= 0 || particlePositions[i * 3 + 1] < earthRadius) {
+                if (particleLifetimes[i] > 0) {
+                    particleVelocities[i * 3 + 1] -= 9.81 * dtReal * 12;
+                    particlePositions[i * 3] += particleVelocities[i * 3] * dtReal;
+                    particlePositions[i * 3 + 1] += particleVelocities[i * 3 + 1] * dtReal;
+                    particlePositions[i * 3 + 2] += particleVelocities[i * 3 + 2] * dtReal;
+                    particleLifetimes[i] -= dtReal;
+                    particleSizes[i] *= 0.97;
+                    if (particleLifetimes[i] <= 0 || particlePositions[i * 3 + 1] < earthRadius) {
                         particlePositions[i * 3] = 0;
                         particlePositions[i * 3 + 1] = 0;
                         particlePositions[i * 3 + 2] = 0;
+                        particleSizes[i] = 0;
                     }
                 }
             }
-            particles.geometry.attributes.position.needsUpdate = true;
+            particleGeometry.attributes.position.needsUpdate = true;
+            particleGeometry.attributes.size.needsUpdate = true;
 
-            // Camera orbit
-            camera.position.x = Math.sin(time * 0.0001) * 12000000;
-            camera.position.z = Math.cos(time * 0.0001) * 12000000;
-            camera.lookAt(0, 0, 0);
+            // Scene Updates
+            earth.rotation.y += dtReal * 0.01;
+            clouds.rotation.y += dtReal * 0.015;
+            atmosphereMaterial.uniforms.time.value = time / 1000;
+            particleMaterial.uniforms.time.value = time / 1000;
+
+            // Camera Orbit
+            camera.position.x = Math.sin(gameState.timePlayed * 0.005) * 35000000;
+            camera.position.z = Math.cos(gameState.timePlayed * 0.005) * 35000000;
+            camera.lookAt(earth.position);
 
             renderer.render(scene, camera);
             requestAnimationFrame(animate);
         }
 
-        // Start Game
+        // Initialize
         updateUI();
         requestAnimationFrame(animate);
     </script>
