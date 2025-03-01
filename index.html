@@ -95,12 +95,11 @@
         const M = 5.972e24;   // Earth's mass (kg)
         const R = 6.371e6;    // Earth's radius (m)
         const rodMass = 8700 * Math.PI * rodRadius * rodRadius * rodLength; // Tungsten density ~8700 kg/m³
-        const g0 = 9.81;      // Surface gravity (m/s²)
         const dragCoefficient = 0.82; // Approximate for cylinder
         const airDensitySL = 1.225; // Sea level air density (kg/m³)
 
         // Simulation Variables
-        let velocity = 0;     // m/s
+        let velocity = 0;     // m/s (negative is downward)
         let altitude = 400000; // m (400 km starting altitude)
         let isLaunched = false;
 
@@ -127,21 +126,26 @@
             requestAnimationFrame(animate);
 
             if (isLaunched && altitude > 0) {
-                // Gravitational Acceleration (varies with altitude)
-                const r = R + altitude;
-                const gravity = (G * M) / (r * r);
+                // Time step (assuming 60 FPS)
+                const dt = 0.016; // seconds
 
-                // Atmospheric Drag (simplified exponential decay)
+                // Gravitational Acceleration (always downward)
+                const r = R + altitude;
+                const gravity = -(G * M) / (r * r); // Negative for downward force
+
+                // Atmospheric Drag (opposes velocity direction)
                 const altitudeKm = altitude / 1000;
                 const airDensity = altitudeKm < 100 ? airDensitySL * Math.exp(-altitudeKm / 7.5) : 0;
                 const crossSection = Math.PI * rodRadius * rodRadius;
-                const dragForce = 0.5 * airDensity * velocity * velocity * dragCoefficient * crossSection;
-                const dragAcceleration = -dragForce / rodMass;
+                const dragForce = 0.5 * airDensity * velocity * velocity * dragCoefficient * crossSection * (velocity > 0 ? 1 : -1);
+                const dragAcceleration = dragForce / rodMass;
+
+                // Total Acceleration
+                const totalAcceleration = gravity + dragAcceleration;
 
                 // Update Velocity and Position
-                const totalAcceleration = gravity + (velocity < 0 ? dragAcceleration : 0);
-                velocity += totalAcceleration * 0.016; // 60 FPS timestep
-                altitude += velocity * 0.016;
+                velocity += totalAcceleration * dt;
+                altitude += velocity * dt;
                 rod.position.y = altitude / 1000; // Convert to km for visual scale
 
                 // Rod Orientation (align with velocity vector)
