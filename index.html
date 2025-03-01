@@ -4,31 +4,59 @@
     <meta charset="UTF-8">
     <title>Rods from God: Orbital Dominion</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Orbitron', sans-serif; }
         canvas { width: 100vw; height: 100vh; display: block; }
-        #ui { position: absolute; top: 10px; left: 10px; color: #fff; font-family: Arial, sans-serif; }
-        button { padding: 5px 10px; margin: 2px; background: #333; color: #fff; border: none; cursor: pointer; }
-        button:hover { background: #555; }
-        #map { position: absolute; bottom: 10px; right: 10px; width: 300px; height: 200px; background: rgba(0,0,0,0.7); color: #fff; padding: 5px; }
+        #ui {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            color: #0f0; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between;
+        }
+        #resources { padding: 10px; background: rgba(0, 0, 0, 0.7); pointer-events: all; }
+        #resources span { margin-right: 15px; font-size: 18px; text-shadow: 0 0 5px #0f0; }
+        #controls { display: flex; flex-wrap: wrap; padding: 10px; background: rgba(0, 0, 0, 0.7); pointer-events: all; }
+        #controls button {
+            margin: 5px; padding: 10px 20px; background: #111; color: #0f0; border: 1px solid #0f0;
+            cursor: pointer; font-size: 16px; transition: all 0.3s; text-transform: uppercase;
+        }
+        #controls button:hover { background: #0f0; color: #000; box-shadow: 0 0 10px #0f0; }
+        #status { padding: 10px; background: rgba(0, 0, 0, 0.7); text-align: center; }
+        #map {
+            position: absolute; bottom: 20px; right: 20px; width: 350px; padding: 10px;
+            background: rgba(0, 0, 0, 0.8); border: 1px solid #0f0; font-size: 14px;
+        }
+        #map div { margin: 5px 0; }
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
     </style>
 </head>
 <body>
     <canvas id="canvas"></canvas>
     <div id="ui">
-        <div>Resources: <span id="metal">0</span> Metal | <span id="influence">0</span> Influence | <span id="tech">0</span> Tech</div>
-        <div>Satellites: <span id="satellites">1</span> | Rods/Drop: <span id="rods">1</span> | Power: <span id="rodPower">1</span></div>
-        <div>Phase: <span id="phase">1</span> | Time: <span id="time">0</span>h</div>
-        <button onclick="dropRod()">Drop Rod</button>
-        <button onclick="upgradeSatellites()">More Satellites (50 Metal)</button>
-        <button onclick="upgradeRods()">More Rods (100 Metal)</button>
-        <button onclick="upgradePower()">Boost Power (150 Metal)</button>
-        <button onclick="unlockAutomation()">Automation (200 Tech)</button>
-        <button onclick="unlockPrecision()">Precision Targeting (500 Tech)</button>
-        <button onclick="buildDyson()">Dyson Swarm (10000 Tech)</button>
-        <button onclick="buildColossus()">Rod Colossus (50000 Tech)</button>
-        <button onclick="resetWorld()">Reset World</button>
+        <div id="resources">
+            <span>Metal: <span id="metal">0</span></span>
+            <span>Influence: <span id="influence">0</span></span>
+            <span>Tech: <span id="tech">0</span></span>
+        </div>
+        <div id="controls">
+            <button onclick="dropRod()">Launch Strike</button>
+            <button onclick="upgradeSatellites()">Add Satellite (50 Metal)</button>
+            <button onclick="upgradeRods()">More Rods (100 Metal)</button>
+            <button onclick="upgradePower()">Enhance Power (150 Metal)</button>
+            <button onclick="unlockAutomation()">Automate (200 Tech)</button>
+            <button onclick="unlockPrecision()">Precision (500 Tech)</button>
+            <button onclick="buildDyson()">Dyson Swarm (10K Tech)</button>
+            <button onclick="buildColossus()">Rod Colossus (50K Tech)</button>
+            <button onclick="resetWorld()">Orbital Reset</button>
+        </div>
+        <div id="status">
+            Phase: <span id="phase">1</span> | Time: <span id="time">0</span>h | Satellites: <span id="satellites">1</span> | Rods/Drop: <span id="rods">1</span> | Power: <span id="rodPower">1</span>
+        </div>
+        <div id="map">
+            <div>Geopolitical Status:</div>
+            <div>USA: <span id="usa">100</span></div>
+            <div>China: <span id="china">100</span></div>
+            <div>Russia: <span id="russia">100</span></div>
+            <div>EU: <span id="eu">100</span></div>
+        </div>
     </div>
-    <div id="map">Geopolitical Map: <span id="nations"></span></div>
 
     <script>
         // Game State
@@ -37,7 +65,8 @@
             satellites: 1, rods: 1, rodPower: 1,
             automation: false, precision: false, dyson: false, colossus: false,
             phase: 1, timePlayed: 0, lastDrop: 0,
-            nations: { usa: 100, china: 100, russia: 100, eu: 100 } // Health-like metric
+            nations: { usa: 100, china: 100, russia: 100, eu: 100 },
+            impacts: []
         };
 
         // WebGPU Setup
@@ -46,7 +75,7 @@
         const device = await adapter.requestDevice();
         const context = canvas.getContext('webgpu');
         const format = navigator.gpu.getPreferredCanvasFormat();
-        context.configure({ device, format });
+        context.configure({ device, format, alphaMode: 'opaque' });
 
         function resizeCanvas() {
             canvas.width = window.innerWidth;
@@ -59,6 +88,7 @@
         const vertexShader = `
             struct Uniforms {
                 modelViewProj : mat4x4<f32>,
+                time : f32,
             };
             @binding(0) @group(0) var<uniform> uniforms : Uniforms;
 
@@ -75,9 +105,10 @@
             @vertex
             fn main(input : VertexInput) -> VertexOutput {
                 var output : VertexOutput;
-                output.position = uniforms.modelViewProj * vec4<f32>(input.position, 1.0);
-                output.normal = input.normal;
                 output.pos = input.position;
+                output.normal = input.normal;
+                let displaced = input.position + input.normal * sin(length(input.position) * 0.0001 + uniforms.time) * 5000.0;
+                output.position = uniforms.modelViewProj * vec4<f32>(displaced, 1.0);
                 return output;
             }
         `;
@@ -90,41 +121,50 @@
             @fragment
             fn main(input : FragmentInput) -> @location(0) vec4<f32> {
                 let lightDir = normalize(vec3<f32>(1.0, 1.0, 1.0));
-                let diffuse = max(dot(input.normal, lightDir), 0.1);
-                let baseColor = mix(vec3<f32>(0.1, 0.3, 0.7), vec3<f32>(0.3, 0.6, 0.2), step(0.0, input.pos.y)); // Ocean/Land
+                let diffuse = max(dot(input.normal, lightDir), 0.2);
+                let baseColor = mix(vec3<f32>(0.05, 0.2, 0.6), vec3<f32>(0.3, 0.5, 0.1), step(0.0, input.pos.y));
                 let height = length(input.pos) - 6371000.0;
-                let cloud = smoothstep(10000.0, 15000.0, height) * 0.8; // Volumetric clouds
-                let finalColor = mix(baseColor * diffuse, vec3<f32>(1.0), cloud);
-                return vec4<f32>(finalColor, 1.0);
+                let cloud = smoothstep(8000.0, 12000.0, height) * 0.9;
+                let finalColor = mix(baseColor * diffuse, vec3<f32>(0.9, 0.95, 1.0), cloud);
+                return vec4<f32>(finalColor + pow(diffuse, 10.0) * 0.3, 1.0); // Specular highlight
             }
         `;
 
         const rodFragmentShader = `
+            struct FragmentInput {
+                @location(0) pos : vec3<f32>,
+            };
             @fragment
-            fn main() -> @location(0) vec4<f32> {
-                return vec4<f32>(1.0, 0.5, 0.0, 1.0); // Glowing rod
+            fn main(input : FragmentInput) -> @location(0) vec4<f32> {
+                let heat = smoothstep(36000000.0, 6371000.0, length(input.pos));
+                return vec4<f32>(1.0, 0.5 - heat * 0.4, 0.0, 1.0); // Glowing reentry effect
             }
         `;
 
-        const particleShader = `
-            struct Particle {
-                position : vec3<f32>,
-                velocity : vec3<f32>,
-                life : f32,
+        const particleVertexShader = `
+            struct Uniforms {
+                modelViewProj : mat4x4<f32>,
+                time : f32,
             };
-            @binding(0) @group(0) var<storage, read_write> particles : array<Particle>;
-            @binding(1) @group(0) var<uniform> time : f32;
+            @binding(0) @group(0) var<uniform> uniforms : Uniforms;
+            @binding(1) @group(0) var<storage> particles : array<vec4<f32>>;
 
-            @compute @workgroup_size(64)
-            fn main(@builtin(global_invocation_id) id : vec3<u32>) {
-                let i = id.x;
-                if (i >= arrayLength(&particles)) { return; }
-                particles[i].position = particles[i].position + particles[i].velocity * time;
-                particles[i].life = particles[i].life - time;
-                if (particles[i].life <= 0.0) {
-                    particles[i].position = vec3<f32>(0.0);
-                    particles[i].velocity = vec3<f32>(0.0);
-                }
+            @vertex
+            fn main(@builtin(vertex_index) VertexIndex : u32) -> @builtin(position) vec4<f32> {
+                let pos = particles[VertexIndex / 6u];
+                let size = 1000.0 * pos.w;
+                let offsets = array<vec2<f32>, 6>(
+                    vec2<f32>(-size, -size), vec2<f32>(size, -size), vec2<f32>(size, size),
+                    vec2<f32>(-size, -size), vec2<f32>(size, size), vec2<f32>(-size, size)
+                );
+                return uniforms.modelViewProj * vec4<f32>(pos.xyz + vec3<f32>(offsets[VertexIndex % 6u], 0.0), 1.0);
+            }
+        `;
+
+        const particleFragmentShader = `
+            @fragment
+            fn main() -> @location(0) vec4<f32> {
+                return vec4<f32>(0.8, 0.6, 0.4, 0.5); // Dust/smoke
             }
         `;
 
@@ -139,11 +179,12 @@
             };
             @binding(0) @group(0) var<storage, read_write> rods : array<Rod>;
             @binding(1) @group(0) var<storage, read_write> terrain : array<Terrain>;
-            @binding(2) @group(0) var<uniform> time : f32;
+            @binding(2) @group(0) var<storage, read_write> impacts : array<vec4<f32>>;
+            @binding(3) @group(0) var<uniform> time : f32;
 
             @compute @workgroup_size(64)
             fn main(@builtin(global_invocation_id) id : vec3<u32>) {
-                let i = id<|pad|>.x;
+                let i = id.x;
                 if (i >= arrayLength(&rods)) { return; }
 
                 let G = 6.67430e-11;
@@ -161,11 +202,15 @@
                 rods[i].velocity = rods[i].velocity + accel * time;
                 rods[i].position = rods[i].position + rods[i].velocity * time;
 
-                if (altitude < 10000.0) {
-                    let idx = u32(floor(atan2(rods[i].position.z, rods[i].position.x) / (2.0 * 3.14159) * 64.0) * 64.0 +
-                                floor(acos(rods[i].position.y / r) / 3.14159 * 64.0));
+                if (altitude < 1000.0) {
+                    let theta = acos(rods[i].position.y / r);
+                    let phi = atan2(rods[i].position.z, rods[i].position.x);
+                    let lat = u32(floor(theta / 3.14159 * 128.0));
+                    let lon = u32(floor((phi + 3.14159) / (2.0 * 3.14159) * 128.0));
+                    let idx = lat * 128u + lon;
                     if (idx < arrayLength(&terrain)) {
-                        terrain[idx].height -= rods[i].mass * 0.0001;
+                        terrain[idx].height -= rods[i].mass * 0.0005;
+                        impacts[i] = vec4<f32>(rods[i].position, rods[i].mass);
                         rods[i].position = vec3<f32>(0.0);
                         rods[i].velocity = vec3<f32>(0.0);
                     }
@@ -173,9 +218,30 @@
             }
         `;
 
+        const particleComputeShader = `
+            struct Particle {
+                position : vec4<f32>,
+                velocity : vec4<f32>,
+            };
+            @binding(0) @group(0) var<storage, read_write> particles : array<Particle>;
+            @binding(1) @group(0) var<uniform> time : f32;
+
+            @compute @workgroup_size(64)
+            fn main(@builtin(global_invocation_id) id : vec3<u32>) {
+                let i = id.x;
+                if (i >= arrayLength(&particles)) { return; }
+                particles[i].position = particles[i].position + particles[i].velocity * time;
+                particles[i].position.w = particles[i].position.w - time * 0.1;
+                if (particles[i].position.w <= 0.0) {
+                    particles[i].position = vec4<f32>(0.0);
+                    particles[i].velocity = vec4<f32>(0.0);
+                }
+            }
+        `;
+
         // Earth Geometry
         const earthRadius = 6371000;
-        const segments = 64;
+        const segments = 128;
         const vertices = [];
         const indices = [];
         const terrainData = new Float32Array(segments * segments);
@@ -222,15 +288,41 @@
         // Rods
         let rods = [{ position: [0, 36000000, 0], velocity: [0, 0, 0], mass: 1000 }];
         const rodBuffer = device.createBuffer({
-            size: 1024 * 16,
+            size: 4096 * 16,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+        });
+        const impactBuffer = device.createBuffer({
+            size: 4096 * 16,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
-        // Particles (Dust/Smoke)
+        // Rod Geometry
+        const rodVertices = new Float32Array([
+            -200, -1000, -200, 0, 0, 1,  200, -1000, -200, 0, 0, 1,  200, 1000, -200, 0, 0, 1,  -200, 1000, -200, 0, 0, 1,
+            -200, -1000, 200, 0, 0, 1,   200, -1000, 200, 0, 0, 1,   200, 1000, 200, 0, 0, 1,   -200, 1000, 200, 0, 0, 1
+        ]);
+        const rodIndices = new Uint32Array([0,1,2, 0,2,3, 4,5,6, 4,6,7, 0,1,5, 0,5,4, 2,3,7, 2,7,6, 0,3,7, 0,7,4, 1,2,6, 1,6,5]);
+        const rodVertexBuffer = device.createBuffer({
+            size: rodVertices.length * 4,
+            usage: GPUBufferUsage.VERTEX,
+            mappedAtCreation: true
+        });
+        new Float32Array(rodVertexBuffer.getMappedRange()).set(rodVertices);
+        rodVertexBuffer.unmap();
+
+        const rodIndexBuffer = device.createBuffer({
+            size: rodIndices.length * 4,
+            usage: GPUBufferUsage.INDEX,
+            mappedAtCreation: true
+        });
+        new Uint32Array(rodIndexBuffer.getMappedRange()).set(rodIndices);
+        rodIndexBuffer.unmap();
+
+        // Particles
         let particles = [];
         const particleBuffer = device.createBuffer({
-            size: 1024 * 16,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+            size: 16384 * 32,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.VERTEX
         });
 
         // Pipelines
@@ -262,18 +354,29 @@
             depthStencil: { depthWriteEnabled: true, depthCompare: 'less', format: 'depth24plus' }
         });
 
+        const particlePipeline = device.createRenderPipeline({
+            layout: 'auto',
+            vertex: { module: device.createShaderModule({ code: particleVertexShader }), entryPoint: 'main' },
+            fragment: { module: device.createShaderModule({ code: particleFragmentShader }), entryPoint: 'main', targets: [{ format, blend: {
+                color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
+                alpha: { srcFactor: 'one', dstFactor: 'zero' }
+            }}] },
+            primitive: { topology: 'triangle-list' },
+            depthStencil: { depthWriteEnabled: false, depthCompare: 'less', format: 'depth24plus' }
+        });
+
         const computePipeline = device.createComputePipeline({
             layout: 'auto',
             compute: { module: device.createShaderModule({ code: computeShader }), entryPoint: 'main' }
         });
 
-        const particlePipeline = device.createComputePipeline({
+        const particleComputePipeline = device.createComputePipeline({
             layout: 'auto',
-            compute: { module: device.createShaderModule({ code: particleShader }), entryPoint: 'main' }
+            compute: { module: device.createShaderModule({ code: particleComputeShader }), entryPoint: 'main' }
         });
 
-        // Uniforms
-        const uniformBuffer = device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        // Bind Groups
+        const uniformBuffer = device.createBuffer({ size: 68, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
         const timeBuffer = device.createBuffer({ size: 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
 
         const earthBindGroup = device.createBindGroup({
@@ -286,17 +389,26 @@
             entries: [{ binding: 0, resource: { buffer: uniformBuffer } }]
         });
 
+        const particleBindGroup = device.createBindGroup({
+            layout: particlePipeline.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: { buffer: uniformBuffer } },
+                { binding: 1, resource: { buffer: particleBuffer } }
+            ]
+        });
+
         const computeBindGroup = device.createBindGroup({
             layout: computePipeline.getBindGroupLayout(0),
             entries: [
                 { binding: 0, resource: { buffer: rodBuffer } },
                 { binding: 1, resource: { buffer: terrainBuffer } },
-                { binding: 2, resource: { buffer: timeBuffer } }
+                { binding: 2, resource: { buffer: impactBuffer } },
+                { binding: 3, resource: { buffer: timeBuffer } }
             ]
         });
 
-        const particleBindGroup = device.createBindGroup({
-            layout: particlePipeline.getBindGroupLayout(0),
+        const particleComputeBindGroup = device.createBindGroup({
+            layout: particleComputePipeline.getBindGroupLayout(0),
             entries: [
                 { binding: 0, resource: { buffer: particleBuffer } },
                 { binding: 1, resource: { buffer: timeBuffer } }
@@ -309,86 +421,73 @@
         const view = mat4.lookAt([0, 0, 20000000], [0, 0, 0], [0, 1, 0]);
         let model = mat4.identity();
 
-        // Rod Geometry
-        const rodVertices = new Float32Array([
-            -100, -500, -100, 0, 0, 1,  100, -500, -100, 0, 0, 1,  100, 500, -100, 0, 0, 1,  -100, 500, -100, 0, 0, 1,
-            -100, -500, 100, 0, 0, 1,   100, -500, 100, 0, 0, 1,   100, 500, 100, 0, 0, 1,   -100, 500, 100, 0, 0, 1
-        ]);
-        const rodIndices = new Uint32Array([0,1,2, 0,2,3, 4,5,6, 4,6,7, 0,1,5, 0,5,4, 2,3,7, 2,7,6, 0,3,7, 0,7,4, 1,2,6, 1,6,5]);
-        const rodVertexBuffer = device.createBuffer({
-            size: rodVertices.length * 4,
-            usage: GPUBufferUsage.VERTEX,
-            mappedAtCreation: true
-        });
-        new Float32Array(rodVertexBuffer.getMappedRange()).set(rodVertices);
-        rodVertexBuffer.unmap();
-
-        const rodIndexBuffer = device.createBuffer({
-            size: rodIndices.length * 4,
-            usage: GPUBufferUsage.INDEX,
-            mappedAtCreation: true
-        });
-        new Uint32Array(rodIndexBuffer.getMappedRange()).set(rodIndices);
-        rodIndexBuffer.unmap();
-
         // Game Logic
         function dropRod() {
             if (Date.now() - gameState.lastDrop < 30000 / gameState.satellites) return;
             gameState.lastDrop = Date.now();
             for (let i = 0; i < gameState.rods; i++) {
-                const pos = gameState.precision ? 
-                    [Math.random() * 1000000 - 500000, 36000000, Math.random() * 1000000 - 500000] : 
+                const pos = gameState.precision ?
+                    [Math.random() * 500000 - 250000, 36000000, Math.random() * 500000 - 250000] :
                     [Math.random() * 2000000 - 1000000, 36000000, Math.random() * 2000000 - 1000000];
-                rods.push({ position: pos, velocity: [0, -10000, 0], mass: 1000 * gameState.rodPower });
+                rods.push({ position: pos, velocity: [0, -15000, 0], mass: 1000 * gameState.rodPower });
             }
             updateRods();
-            spawnParticles();
-            updateGeopolitics();
-            gameState.metal += 10 * gameState.rodPower;
-            gameState.influence += 5 * gameState.rodPower;
-            gameState.tech += 2 * gameState.rodPower;
+            gameState.metal += 20 * gameState.rodPower;
+            gameState.influence += 10 * gameState.rodPower;
+            gameState.tech += 5 * gameState.rodPower;
             updateUI();
         }
 
         function upgradeSatellites() { if (gameState.metal >= 50) { gameState.metal -= 50; gameState.satellites++; updateUI(); } }
         function upgradeRods() { if (gameState.metal >= 100) { gameState.metal -= 100; gameState.rods++; updateUI(); } }
-        function upgradePower() { if (gameState.metal >= 150) { gameState.metal -= 150; gameState.rodPower *= 1.1; updateUI(); } }
+        function upgradePower() { if (gameState.metal >= 150) { gameState.metal -= 150; gameState.rodPower *= 1.15; updateUI(); } }
         function unlockAutomation() { if (gameState.tech >= 200 && !gameState.automation) { gameState.tech -= 200; gameState.automation = true; updateUI(); } }
         function unlockPrecision() { if (gameState.tech >= 500 && !gameState.precision) { gameState.tech -= 500; gameState.precision = true; updateUI(); } }
-        function buildDyson() { if (gameState.tech >= 10000 && !gameState.dyson) { gameState.tech -= 10000; gameState.dyson = true; gameState.metal += 1000; updateUI(); } }
-        function buildColossus() { if (gameState.tech >= 50000 && !gameState.colossus) { gameState.tech -= 50000; gameState.colossus = true; rods.push({ position: [0, 36000000, 0], velocity: [0, -20000, 0], mass: 1000000 }); updateRods(); updateUI(); } }
+        function buildDyson() { if (gameState.tech >= 10000 && !gameState.dyson) { gameState.tech -= 10000; gameState.dyson = true; updateUI(); } }
+        function buildColossus() {
+            if (gameState.tech >= 50000 && !gameState.colossus) {
+                gameState.tech -= 50000; gameState.colossus = true;
+                rods.push({ position: [0, 36000000, 0], velocity: [0, -25000, 0], mass: 1000000 });
+                updateRods();
+                updateUI();
+            }
+        }
         function resetWorld() {
             if (gameState.phase >= 3) {
-                gameState.metal *= 2; gameState.influence *= 2; gameState.tech *= 2;
+                gameState.metal *= 2.5; gameState.influence *= 2.5; gameState.tech *= 2.5;
                 gameState.satellites = 1; gameState.rods = 1; gameState.rodPower = 1;
                 gameState.automation = false; gameState.precision = false; gameState.dyson = false; gameState.colossus = false;
-                gameState.phase = 1; gameState.timePlayed = 0; rods = [{ position: [0, 36000000, 0], velocity: [0, 0, 0], mass: 1000 }];
+                gameState.phase = 1; gameState.timePlayed = 0; gameState.lastDrop = 0;
                 gameState.nations = { usa: 100, china: 100, russia: 100, eu: 100 };
-                terrainData.fill(0); device.queue.writeBuffer(terrainBuffer, 0, terrainData);
-                updateUI();
+                rods = [{ position: [0, 36000000, 0], velocity: [0, 0, 0], mass: 1000 }];
+                particles = []; terrainData.fill(0);
+                device.queue.writeBuffer(terrainBuffer, 0, terrainData);
+                updateRods(); updateParticles(); updateUI();
             }
         }
 
         function updateGeopolitics() {
             if (gameState.phase >= 2) {
                 for (let nation in gameState.nations) {
-                    gameState.nations[nation] -= gameState.rodPower * 0.1;
+                    gameState.nations[nation] -= gameState.rodPower * 0.2 * gameState.rods;
                     if (gameState.nations[nation] <= 0) gameState.nations[nation] = 0;
                 }
-                if (gameState.phase === 3 && Math.random() < 0.05) {
-                    rods.push({ position: [Math.random() * 2000000 - 1000000, 36000000, Math.random() * 2000000 - 1000000], velocity: [0, -10000, 0], mass: 500 }); // Counterattack
+                if (gameState.phase === 3 && Math.random() < 0.1) {
+                    rods.push({ position: [Math.random() * 2000000 - 1000000, 36000000, Math.random() * 2000000 - 1000000], velocity: [0, -12000, 0], mass: 800 });
                 }
             }
-            document.getElementById('nations').textContent = JSON.stringify(gameState.nations);
+            document.getElementById('usa').textContent = Math.floor(gameState.nations.usa);
+            document.getElementById('china').textContent = Math.floor(gameState.nations.china);
+            document.getElementById('russia').textContent = Math.floor(gameState.nations.russia);
+            document.getElementById('eu').textContent = Math.floor(gameState.nations.eu);
         }
 
-        function spawnParticles() {
-            for (let i = 0; i < 100 * gameState.rodPower; i++) {
-                const pos = rods[rods.length - 1].position;
+        function spawnParticles(pos, mass) {
+            const count = Math.min(500 * mass / 1000, 10000);
+            for (let i = 0; i < count; i++) {
                 particles.push({
-                    position: pos.slice(),
-                    velocity: [(Math.random() - 0.5) * 1000, (Math.random() - 0.5) * 1000, (Math.random() - 0.5) * 1000],
-                    life: Math.random() * 5 + 2
+                    position: [pos[0] + (Math.random() - 0.5) * 5000, pos[1] + (Math.random() - 0.5) * 5000, pos[2] + (Math.random() - 0.5) * 5000, 1.0],
+                    velocity: [(Math.random() - 0.5) * 2000, Math.random() * 3000, (Math.random() - 0.5) * 2000, 0.0]
                 });
             }
             updateParticles();
@@ -396,13 +495,20 @@
 
         function updateRods() {
             const rodData = new Float32Array(rods.length * 16 / 4);
-            rods.forEach((rod, i) => rodData.set(rod.position.concat(rod.velocity, rod.mass), i * 4));
+            const impactData = new Float32Array(rods.length * 16 / 4);
+            rods.forEach((rod, i) => {
+                rodData.set(rod.position.concat(rod.velocity, rod.mass), i * 4);
+                impactData.set(gameState.impacts[i] || [0, 0, 0, 0], i * 4);
+            });
             device.queue.writeBuffer(rodBuffer, 0, rodData);
+            device.queue.writeBuffer(impactBuffer, 0, impactData);
         }
 
         function updateParticles() {
-            const particleData = new Float32Array(particles.length * 16 / 4);
-            particles.forEach((p, i) => particleData.set(p.position.concat(p.velocity, p.life), i * 4));
+            const particleData = new Float32Array(particles.length * 32 / 4);
+            particles.forEach((p, i) => {
+                particleData.set(p.position.concat(p.velocity), i * 8);
+            });
             device.queue.writeBuffer(particleBuffer, 0, particleData);
         }
 
@@ -412,7 +518,7 @@
             document.getElementById('tech').textContent = Math.floor(gameState.tech);
             document.getElementById('satellites').textContent = gameState.satellites;
             document.getElementById('rods').textContent = gameState.rods;
-            document.getElementById('rodPower').textContent = gameState.rodPower.toFixed(1);
+            document.getElementById('rodPower').textContent = gameState.rodPower.toFixed(2);
             document.getElementById('phase').textContent = gameState.phase;
             document.getElementById('time').textContent = (gameState.timePlayed / 3600).toFixed(1);
         }
@@ -420,18 +526,20 @@
         // Animation Loop
         let lastTime = performance.now();
         function animate(time) {
-            const dt = (time - lastTime) / 1000;
+            const dt = Math.min((time - lastTime) / 1000, 0.1); // Cap dt to avoid physics blowup
             lastTime = time;
 
             gameState.timePlayed += dt;
             if (gameState.timePlayed > 3600 * 3) gameState.phase = 2;
             if (gameState.timePlayed > 3600 * 7) gameState.phase = 3;
             if (gameState.automation) dropRod();
-            if (gameState.dyson) gameState.metal += dt * 10;
+            if (gameState.dyson) gameState.metal += dt * 20;
 
-            model = mat4.rotateY(model, dt * 0.1);
-            const mvp = mat4.multiply(proj, mat4.multiply(view, model));
-            device.queue.writeBuffer(uniformBuffer, 0, new Float32Array(mvp));
+            const mvp = mat4.multiply(proj, mat4.multiply(view, mat4.rotateY(model, dt * 0.05)));
+            const uniformData = new Float32Array(17);
+            uniformData.set(mvp);
+            uniformData[16] = time / 1000;
+            device.queue.writeBuffer(uniformBuffer, 0, uniformData);
             device.queue.writeBuffer(timeBuffer, 0, new Float32Array([dt]));
 
             const commandEncoder = device.createCommandEncoder();
@@ -444,10 +552,21 @@
             computePass.end();
 
             const particlePass = commandEncoder.beginComputePass();
-            particlePass.setPipeline(particlePipeline);
-            particlePass.setBindGroup(0, particleBindGroup);
+            particlePass.setPipeline(particleComputePipeline);
+            particlePass.setBindGroup(0, particleComputeBindGroup);
             particlePass.dispatchWorkgroups(Math.ceil(particles.length / 64));
             particlePass.end();
+
+            // Check Impacts
+            gameState.impacts = rods.map((rod, i) => {
+                const impact = new Float32Array(impactBuffer.getMappedRange?.() || new ArrayBuffer(16))[i * 4];
+                if (impact && impact[3] > 0) {
+                    spawnParticles([impact[0], impact[1], impact[2]], impact[3]);
+                    return [impact[0], impact[1], impact[2], impact[3]];
+                }
+                return null;
+            }).filter(Boolean);
+            updateGeopolitics();
 
             // Render Pass
             const renderPass = commandEncoder.beginRenderPass({
@@ -480,6 +599,10 @@
             renderPass.setVertexBuffer(0, rodVertexBuffer);
             renderPass.setIndexBuffer(rodIndexBuffer, 'uint32');
             rods.forEach(() => renderPass.drawIndexed(rodIndices.length));
+
+            renderPass.setPipeline(particlePipeline);
+            renderPass.setBindGroup(0, particleBindGroup);
+            renderPass.draw(particles.length * 6);
 
             renderPass.end();
             device.queue.submit([commandEncoder.finish()]);
@@ -547,7 +670,11 @@
             }
         };
 
-        // Start Game
+        // Verification and Start
+        console.log('Starting Orbital Dominion...');
+        updateRods();
+        updateParticles();
+        updateUI();
         requestAnimationFrame(animate);
     </script>
 </body>
