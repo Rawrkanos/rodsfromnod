@@ -1,11 +1,11 @@
-// Enhanced game.js with WebGPU rendering and improved physics simulation
+// Enhanced game.js with WebGPU and improved physics simulation
 
 // Game state variables
 let canvas, device, context, pipeline;
 let rod = { mass: 100, shape: 'rod', altitude: 30000, velocity: 0, position: [0, 30000, 0] };
 let gravity = 9.81;
 let airDensity = 1.225;
-let dragCoefficient = 0.82; // Adjusted for tungsten rod
+let dragCoefficient = 0.82;
 let impactData = null;
 let lastFrameTime = performance.now();
 
@@ -26,7 +26,7 @@ async function initWebGPU() {
         fragment: { module: createShaderModule(device, fragmentShader), entryPoint: 'main', targets: [{ format: 'bgra8unorm' }] },
         primitive: { topology: 'triangle-list' }
     });
-    render();
+    requestAnimationFrame(render);
 }
 
 function createShaderModule(device, source) {
@@ -73,35 +73,33 @@ function render() {
     renderPass.end();
     device.queue.submit([commandEncoder.finish()]);
     
-    drawRod();
-    drawImpact();
-    
+    drawCanvasOverlay();
     if (rod.position[1] > 0) {
         calculatePhysics(deltaTime);
     }
-    
     requestAnimationFrame(render);
 }
 
-function drawRod() {
+function drawCanvasOverlay() {
     let ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw rod
     ctx.fillStyle = 'gray';
     let x = canvas.width / 2;
-    let y = (rod.position[1] / 30000) * canvas.height;
+    let y = canvas.height - (rod.position[1] / 30000) * canvas.height;
     ctx.fillRect(x - 5, y, 10, 30);
-}
-
-function drawImpact() {
-    if (!impactData) return;
-    let ctx = canvas.getContext('2d');
-    ctx.fillStyle = 'red';
-    let craterX = canvas.width / 2;
-    let craterY = canvas.height - 10;
-    let craterSize = impactData.craterRadius * 2;
-    ctx.beginPath();
-    ctx.arc(craterX, craterY, craterSize, 0, Math.PI * 2);
-    ctx.fill();
+    
+    // Draw impact
+    if (impactData) {
+        ctx.fillStyle = 'red';
+        let craterX = canvas.width / 2;
+        let craterY = canvas.height - 10;
+        let craterSize = impactData.craterRadius * 2;
+        ctx.beginPath();
+        ctx.arc(craterX, craterY, craterSize, 0, Math.PI * 2);
+        ctx.fill();
+    }
 }
 
 document.getElementById('dropButton').addEventListener('click', () => {
