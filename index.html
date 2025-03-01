@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Rods from God: Orbital Dominion</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { width: 100vw; height: 100vh; display: block; }
+        #ui { position: absolute; top: 10px; left: 10px; color: #fff; font-family: Arial, sans-serif; }
+        button { padding: 5px 10px; margin: 2px; background: #333; color: #fff; border: none; cursor: pointer; }
+        button:hover { background: #555; }
+        #map { position: absolute; bottom: 10px; right: 10px; width: 300px; height: 200px; background: rgba(0,0,0,0.7); color: #fff; padding: 5px; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="ui">
+        <div>Resources: <span id="metal">0</span> Metal | <span id="influence">0</span> Influence | <span id="tech">0</span> Tech</div>
+        <div>Satellites: <span id="satellites">1</span> | Rods/Drop: <span id="rods">1</span> | Power: <span id="rodPower">1</span></div>
+        <div>Phase: <span id="phase">1</span> | Time: <span id="time">0</span>h</div>
+        <button onclick="dropRod()">Drop Rod</button>
+        <button onclick="upgradeSatellites()">More Satellites (50 Metal)</button>
+        <button onclick="upgradeRods()">More Rods (100 Metal)</button>
+        <button onclick="upgradePower()">Boost Power (150 Metal)</button>
+        <button onclick="unlockAutomation()">Automation (200 Tech)</button>
+        <button onclick="unlockPrecision()">Precision Targeting (500 Tech)</button>
+        <button onclick="buildDyson()">Dyson Swarm (10000 Tech)</button>
+        <button onclick="buildColossus()">Rod Colossus (50000 Tech)</button>
+        <button onclick="resetWorld()">Reset World</button>
+    </div>
+    <div id="map">Geopolitical Map: <span id="nations"></span></div>
+
+    <script>
+        // Game State
+        let gameState = {
+            metal: 0, influence: 0, tech: 0,
+            satellites: 1, rods: 1, rodPower: 1,
+            automation: false, precision: false, dyson: false, colossus: false,
+            phase: 1, timePlayed: 0, lastDrop: 0,
+            nations: { usa: 100, china: 100, russia: 100, eu: 100 } // Health-like metric
+        };
+
+        // WebGPU Setup
+        const canvas = document.getElementById('canvas');
+        const adapter = await navigator.gpu.requestAdapter();
+        const device = await adapter.requestDevice();
+        const context = canvas.getContext('webgpu');
+        const format = navigator.gpu.getPreferredCanvasFormat();
+        context.configure({ device, format });
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Shaders
+        const vertexShader = `
+            struct Uniforms {
+                modelViewProj : mat4x4<f32>,
+            };
+            @binding(0) @group(0) var<uniform> uniforms : Uniforms;
+
+            struct VertexInput {
+                @location(0) position : vec3<f32>,
+                @location(1) normal : vec3<f32>,
+            };
+            struct VertexOutput {
+                @builtin(position) position : vec4<f32>,
+                @location(0) normal : vec3<f32>,
+                @location(1) pos : vec3<f32>,
+            };
+
+            @vertex
+            fn main(input : VertexInput) -> VertexOutput {
+                var output : VertexOutput;
+                output.position = uniforms.modelViewProj * vec4<f32>(input.position, 1.0);
+                output.normal = input.normal;
+                output.pos = input.position;
+                return output;
+            }
+        `;
+
+        const fragmentShader = `
+            struct FragmentInput {
+                @location(0) normal : vec3<f32>,
+                @location(1) pos : vec3<f32>,
+            };
+            @fragment
+            fn main(input : FragmentInput) -> @location(0) vec4<f32> {
+                let lightDir = normalize(vec3<f32>(1.0, 1.0, 1.0));
+                let diffuse = max(dot(input.normal, lightDir), 0.1);
+                let baseColor = mix(vec3<f32>(0.1, 0.3, 0.7), vec3<f32>(0.3, 0.6, 0.2), step(0.0, input.pos.y)); // Ocean/Land
+                let height = length(input.pos) - 6371000.0;
+                let cloud = smoothstep(10000.0, 15000.0, height) * 0.8; // Volumetric clouds
+                let finalColor = mix(baseColor * diffuse, vec3<f32>(1.0), cloud);
+                return vec4<f32>(finalColor, 1.0);
+            }
+        `;
+
+        const rodFragmentShader = `
+            @fragment
+            fn main() -> @location(0) vec4<f32> {
+                return vec4<f32>(1.0, 0.5, 0.0, 1.0); // Glowing rod
+            }
+        `;
+
+        const particleShader = `
+            struct Particle {
+                position : vec3<f32>,
+                velocity : vec3<f32>,
+                life : f32,
+            };
+            @binding(0) @group(0) var<storage, read_write> particles : array<Particle>;
+            @binding(1) @group(0) var<uniform> time : f32;
+
+            @compute @workgroup_size(64)
+            fn main(@builtin(global_invocation_id) id : vec3<u32>) {
+                let i = id.x;
+                if (i >= arrayLength(&particles)) { return; }
+                particles[i].position = particles[i].position + particles[i].velocity * time;
+                particles[i].life = particles[i].life - time;
+                if (particles[i].life <= 0.0) {
+                    particles[i].position = vec3<f32>(0.0);
+                    particles[i].velocity = vec3<f32>(0.0);
+                }
+            }
+        `;
+
+        const computeShader = `
+            struct Rod {
+                position : vec3<f32>,
+                velocity : vec3<f32>,
+                mass : f32,
+            };
+            struct Terrain {
+                height : f32,
+            };
+            @binding(0) @group(0) var<storage, read_write> rods : array<Rod>;
+            @binding(1) @group(0) var<storage, read_write> terrain : array<Terrain>;
+            @binding(2) @group(0) var<uniform> time : f32;
+
+            @compute @workgroup_size(64)
+            fn main(@builtin(global_invocation_id) id : vec3<u32>) {
+                let i = id<|pad|>.x;
+                if (i >= arrayLength(&rods)) { return; }
+
+                let G = 6.67430e-11;
+                let M = 5.972e24;
+                let r = length(rods[i].position);
+                let accel = -G * M / (r * r * r) * rods[i].position;
+
+                let altitude = r - 6371000.0;
+                if (altitude < 100000.0) {
+                    let density = exp(-altitude / 8000.0) * 1.225;
+                    let drag = -0.5 * density * rods[i].velocity * length(rods[i].velocity) * 0.01;
+                    accel = accel + drag / rods[i].mass;
+                }
+
+                rods[i].velocity = rods[i].velocity + accel * time;
+                rods[i].position = rods[i].position + rods[i].velocity * time;
+
+                if (altitude < 10000.0) {
+                    let idx = u32(floor(atan2(rods[i].position.z, rods[i].position.x) / (2.0 * 3.14159) * 64.0) * 64.0 +
+                                floor(acos(rods[i].position.y / r) / 3.14159 * 64.0));
+                    if (idx < arrayLength(&terrain)) {
+                        terrain[idx].height -= rods[i].mass * 0.0001;
+                        rods[i].position = vec3<f32>(0.0);
+                        rods[i].velocity = vec3<f32>(0.0);
+                    }
+                }
+            }
+        `;
+
+        // Earth Geometry
+        const earthRadius = 6371000;
+        const segments = 64;
+        const vertices = [];
+        const indices = [];
+        const terrainData = new Float32Array(segments * segments);
+        for (let lat = 0; lat <= segments; lat++) {
+            for (let lon = 0; lon <= segments; lon++) {
+                const theta = (lat / segments) * Math.PI;
+                const phi = (lon / segments) * 2 * Math.PI;
+                const x = earthRadius * Math.sin(theta) * Math.cos(phi);
+                const y = earthRadius * Math.cos(theta);
+                const z = earthRadius * Math.sin(theta) * Math.sin(phi);
+                vertices.push(x, y, z, x / earthRadius, y / earthRadius, z / earthRadius);
+                terrainData[lat * segments + lon] = 0;
+                if (lat < segments && lon < segments) {
+                    const a = lat * (segments + 1) + lon;
+                    const b = a + 1;
+                    const c = (lat + 1) * (segments + 1) + lon;
+                    const d = c + 1;
+                    indices.push(a, b, c, b, d, c);
+                }
+            }
+        }
+        const vertexBuffer = device.createBuffer({
+            size: vertices.length * 4,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE,
+            mappedAtCreation: true
+        });
+        new Float32Array(vertexBuffer.getMappedRange()).set(vertices);
+        vertexBuffer.unmap();
+
+        const indexBuffer = device.createBuffer({
+            size: indices.length * 4,
+            usage: GPUBufferUsage.INDEX,
+            mappedAtCreation: true
+        });
+        new Uint32Array(indexBuffer.getMappedRange()).set(indices);
+        indexBuffer.unmap();
+
+        const terrainBuffer = device.createBuffer({
+            size: terrainData.length * 4,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+        });
+        device.queue.writeBuffer(terrainBuffer, 0, terrainData);
+
+        // Rods
+        let rods = [{ position: [0, 36000000, 0], velocity: [0, 0, 0], mass: 1000 }];
+        const rodBuffer = device.createBuffer({
+            size: 1024 * 16,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+        });
+
+        // Particles (Dust/Smoke)
+        let particles = [];
+        const particleBuffer = device.createBuffer({
+            size: 1024 * 16,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+        });
+
+        // Pipelines
+        const earthPipeline = device.createRenderPipeline({
+            layout: 'auto',
+            vertex: { module: device.createShaderModule({ code: vertexShader }), entryPoint: 'main', buffers: [{
+                arrayStride: 24,
+                attributes: [
+                    { shaderLocation: 0, offset: 0, format: 'float32x3' },
+                    { shaderLocation: 1, offset: 12, format: 'float32x3' }
+                ]
+            }]},
+            fragment: { module: device.createShaderModule({ code: fragmentShader }), entryPoint: 'main', targets: [{ format }] },
+            primitive: { topology: 'triangle-list' },
+            depthStencil: { depthWriteEnabled: true, depthCompare: 'less', format: 'depth24plus' }
+        });
+
+        const rodPipeline = device.createRenderPipeline({
+            layout: 'auto',
+            vertex: { module: device.createShaderModule({ code: vertexShader }), entryPoint: 'main', buffers: [{
+                arrayStride: 24,
+                attributes: [
+                    { shaderLocation: 0, offset: 0, format: 'float32x3' },
+                    { shaderLocation: 1, offset: 12, format: 'float32x3' }
+                ]
+            }]},
+            fragment: { module: device.createShaderModule({ code: rodFragmentShader }), entryPoint: 'main', targets: [{ format }] },
+            primitive: { topology: 'triangle-list' },
+            depthStencil: { depthWriteEnabled: true, depthCompare: 'less', format: 'depth24plus' }
+        });
+
+        const computePipeline = device.createComputePipeline({
+            layout: 'auto',
+            compute: { module: device.createShaderModule({ code: computeShader }), entryPoint: 'main' }
+        });
+
+        const particlePipeline = device.createComputePipeline({
+            layout: 'auto',
+            compute: { module: device.createShaderModule({ code: particleShader }), entryPoint: 'main' }
+        });
+
+        // Uniforms
+        const uniformBuffer = device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        const timeBuffer = device.createBuffer({ size: 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+
+        const earthBindGroup = device.createBindGroup({
+            layout: earthPipeline.getBindGroupLayout(0),
+            entries: [{ binding: 0, resource: { buffer: uniformBuffer } }]
+        });
+
+        const rodBindGroup = device.createBindGroup({
+            layout: rodPipeline.getBindGroupLayout(0),
+            entries: [{ binding: 0, resource: { buffer: uniformBuffer } }]
+        });
+
+        const computeBindGroup = device.createBindGroup({
+            layout: computePipeline.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: { buffer: rodBuffer } },
+                { binding: 1, resource: { buffer: terrainBuffer } },
+                { binding: 2, resource: { buffer: timeBuffer } }
+            ]
+        });
+
+        const particleBindGroup = device.createBindGroup({
+            layout: particlePipeline.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: { buffer: particleBuffer } },
+                { binding: 1, resource: { buffer: timeBuffer } }
+            ]
+        });
+
+        // Camera
+        const aspect = canvas.width / canvas.height;
+        const proj = mat4.perspective(Math.PI / 4, aspect, 1, 100000000);
+        const view = mat4.lookAt([0, 0, 20000000], [0, 0, 0], [0, 1, 0]);
+        let model = mat4.identity();
+
+        // Rod Geometry
+        const rodVertices = new Float32Array([
+            -100, -500, -100, 0, 0, 1,  100, -500, -100, 0, 0, 1,  100, 500, -100, 0, 0, 1,  -100, 500, -100, 0, 0, 1,
+            -100, -500, 100, 0, 0, 1,   100, -500, 100, 0, 0, 1,   100, 500, 100, 0, 0, 1,   -100, 500, 100, 0, 0, 1
+        ]);
+        const rodIndices = new Uint32Array([0,1,2, 0,2,3, 4,5,6, 4,6,7, 0,1,5, 0,5,4, 2,3,7, 2,7,6, 0,3,7, 0,7,4, 1,2,6, 1,6,5]);
+        const rodVertexBuffer = device.createBuffer({
+            size: rodVertices.length * 4,
+            usage: GPUBufferUsage.VERTEX,
+            mappedAtCreation: true
+        });
+        new Float32Array(rodVertexBuffer.getMappedRange()).set(rodVertices);
+        rodVertexBuffer.unmap();
+
+        const rodIndexBuffer = device.createBuffer({
+            size: rodIndices.length * 4,
+            usage: GPUBufferUsage.INDEX,
+            mappedAtCreation: true
+        });
+        new Uint32Array(rodIndexBuffer.getMappedRange()).set(rodIndices);
+        rodIndexBuffer.unmap();
+
+        // Game Logic
+        function dropRod() {
+            if (Date.now() - gameState.lastDrop < 30000 / gameState.satellites) return;
+            gameState.lastDrop = Date.now();
+            for (let i = 0; i < gameState.rods; i++) {
+                const pos = gameState.precision ? 
+                    [Math.random() * 1000000 - 500000, 36000000, Math.random() * 1000000 - 500000] : 
+                    [Math.random() * 2000000 - 1000000, 36000000, Math.random() * 2000000 - 1000000];
+                rods.push({ position: pos, velocity: [0, -10000, 0], mass: 1000 * gameState.rodPower });
+            }
+            updateRods();
+            spawnParticles();
+            updateGeopolitics();
+            gameState.metal += 10 * gameState.rodPower;
+            gameState.influence += 5 * gameState.rodPower;
+            gameState.tech += 2 * gameState.rodPower;
+            updateUI();
+        }
+
+        function upgradeSatellites() { if (gameState.metal >= 50) { gameState.metal -= 50; gameState.satellites++; updateUI(); } }
+        function upgradeRods() { if (gameState.metal >= 100) { gameState.metal -= 100; gameState.rods++; updateUI(); } }
+        function upgradePower() { if (gameState.metal >= 150) { gameState.metal -= 150; gameState.rodPower *= 1.1; updateUI(); } }
+        function unlockAutomation() { if (gameState.tech >= 200 && !gameState.automation) { gameState.tech -= 200; gameState.automation = true; updateUI(); } }
+        function unlockPrecision() { if (gameState.tech >= 500 && !gameState.precision) { gameState.tech -= 500; gameState.precision = true; updateUI(); } }
+        function buildDyson() { if (gameState.tech >= 10000 && !gameState.dyson) { gameState.tech -= 10000; gameState.dyson = true; gameState.metal += 1000; updateUI(); } }
+        function buildColossus() { if (gameState.tech >= 50000 && !gameState.colossus) { gameState.tech -= 50000; gameState.colossus = true; rods.push({ position: [0, 36000000, 0], velocity: [0, -20000, 0], mass: 1000000 }); updateRods(); updateUI(); } }
+        function resetWorld() {
+            if (gameState.phase >= 3) {
+                gameState.metal *= 2; gameState.influence *= 2; gameState.tech *= 2;
+                gameState.satellites = 1; gameState.rods = 1; gameState.rodPower = 1;
+                gameState.automation = false; gameState.precision = false; gameState.dyson = false; gameState.colossus = false;
+                gameState.phase = 1; gameState.timePlayed = 0; rods = [{ position: [0, 36000000, 0], velocity: [0, 0, 0], mass: 1000 }];
+                gameState.nations = { usa: 100, china: 100, russia: 100, eu: 100 };
+                terrainData.fill(0); device.queue.writeBuffer(terrainBuffer, 0, terrainData);
+                updateUI();
+            }
+        }
+
+        function updateGeopolitics() {
+            if (gameState.phase >= 2) {
+                for (let nation in gameState.nations) {
+                    gameState.nations[nation] -= gameState.rodPower * 0.1;
+                    if (gameState.nations[nation] <= 0) gameState.nations[nation] = 0;
+                }
+                if (gameState.phase === 3 && Math.random() < 0.05) {
+                    rods.push({ position: [Math.random() * 2000000 - 1000000, 36000000, Math.random() * 2000000 - 1000000], velocity: [0, -10000, 0], mass: 500 }); // Counterattack
+                }
+            }
+            document.getElementById('nations').textContent = JSON.stringify(gameState.nations);
+        }
+
+        function spawnParticles() {
+            for (let i = 0; i < 100 * gameState.rodPower; i++) {
+                const pos = rods[rods.length - 1].position;
+                particles.push({
+                    position: pos.slice(),
+                    velocity: [(Math.random() - 0.5) * 1000, (Math.random() - 0.5) * 1000, (Math.random() - 0.5) * 1000],
+                    life: Math.random() * 5 + 2
+                });
+            }
+            updateParticles();
+        }
+
+        function updateRods() {
+            const rodData = new Float32Array(rods.length * 16 / 4);
+            rods.forEach((rod, i) => rodData.set(rod.position.concat(rod.velocity, rod.mass), i * 4));
+            device.queue.writeBuffer(rodBuffer, 0, rodData);
+        }
+
+        function updateParticles() {
+            const particleData = new Float32Array(particles.length * 16 / 4);
+            particles.forEach((p, i) => particleData.set(p.position.concat(p.velocity, p.life), i * 4));
+            device.queue.writeBuffer(particleBuffer, 0, particleData);
+        }
+
+        function updateUI() {
+            document.getElementById('metal').textContent = Math.floor(gameState.metal);
+            document.getElementById('influence').textContent = Math.floor(gameState.influence);
+            document.getElementById('tech').textContent = Math.floor(gameState.tech);
+            document.getElementById('satellites').textContent = gameState.satellites;
+            document.getElementById('rods').textContent = gameState.rods;
+            document.getElementById('rodPower').textContent = gameState.rodPower.toFixed(1);
+            document.getElementById('phase').textContent = gameState.phase;
+            document.getElementById('time').textContent = (gameState.timePlayed / 3600).toFixed(1);
+        }
+
+        // Animation Loop
+        let lastTime = performance.now();
+        function animate(time) {
+            const dt = (time - lastTime) / 1000;
+            lastTime = time;
+
+            gameState.timePlayed += dt;
+            if (gameState.timePlayed > 3600 * 3) gameState.phase = 2;
+            if (gameState.timePlayed > 3600 * 7) gameState.phase = 3;
+            if (gameState.automation) dropRod();
+            if (gameState.dyson) gameState.metal += dt * 10;
+
+            model = mat4.rotateY(model, dt * 0.1);
+            const mvp = mat4.multiply(proj, mat4.multiply(view, model));
+            device.queue.writeBuffer(uniformBuffer, 0, new Float32Array(mvp));
+            device.queue.writeBuffer(timeBuffer, 0, new Float32Array([dt]));
+
+            const commandEncoder = device.createCommandEncoder();
+
+            // Compute Passes
+            const computePass = commandEncoder.beginComputePass();
+            computePass.setPipeline(computePipeline);
+            computePass.setBindGroup(0, computeBindGroup);
+            computePass.dispatchWorkgroups(Math.ceil(rods.length / 64));
+            computePass.end();
+
+            const particlePass = commandEncoder.beginComputePass();
+            particlePass.setPipeline(particlePipeline);
+            particlePass.setBindGroup(0, particleBindGroup);
+            particlePass.dispatchWorkgroups(Math.ceil(particles.length / 64));
+            particlePass.end();
+
+            // Render Pass
+            const renderPass = commandEncoder.beginRenderPass({
+                colorAttachments: [{
+                    view: context.getCurrentTexture().createView(),
+                    clearValue: { r: 0, g: 0, b: 0, a: 1 },
+                    loadOp: 'clear',
+                    storeOp: 'store'
+                }],
+                depthStencilAttachment: {
+                    view: device.createTexture({
+                        size: [canvas.width, canvas.height],
+                        format: 'depth24plus',
+                        usage: GPUTextureUsage.RENDER_ATTACHMENT
+                    }).createView(),
+                    depthClearValue: 1.0,
+                    depthLoadOp: 'clear',
+                    depthStoreOp: 'store'
+                }
+            });
+
+            renderPass.setPipeline(earthPipeline);
+            renderPass.setBindGroup(0, earthBindGroup);
+            renderPass.setVertexBuffer(0, vertexBuffer);
+            renderPass.setIndexBuffer(indexBuffer, 'uint32');
+            renderPass.drawIndexed(indices.length);
+
+            renderPass.setPipeline(rodPipeline);
+            renderPass.setBindGroup(0, rodBindGroup);
+            renderPass.setVertexBuffer(0, rodVertexBuffer);
+            renderPass.setIndexBuffer(rodIndexBuffer, 'uint32');
+            rods.forEach(() => renderPass.drawIndexed(rodIndices.length));
+
+            renderPass.end();
+            device.queue.submit([commandEncoder.finish()]);
+            requestAnimationFrame(animate);
+        }
+
+        // Matrix and Vector Math
+        const mat4 = {
+            identity: () => new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]),
+            perspective: (fov, aspect, near, far) => {
+                const f = 1 / Math.tan(fov / 2);
+                const nf = 1 / (near - far);
+                return new Float32Array([
+                    f/aspect, 0, 0, 0,
+                    0, f, 0, 0,
+                    0, 0, (far + near) * nf, -1,
+                    0, 0, 2 * far * near * nf, 0
+                ]);
+            },
+            lookAt: (eye, center, up) => {
+                const z = vec3.normalize(vec3.subtract(eye, center));
+                const x = vec3.normalize(vec3.cross(up, z));
+                const y = vec3.cross(z, x);
+                return new Float32Array([
+                    x[0], y[0], z[0], 0,
+                    x[1], y[1], z[1], 0,
+                    x[2], y[2], z[2], 0,
+                    -vec3.dot(x, eye), -vec3.dot(y, eye), -vec3.dot(z, eye), 1
+                ]);
+            },
+            rotateY: (m, angle) => {
+                const c = Math.cos(angle), s = Math.sin(angle);
+                const m0 = m[0], m4 = m[4], m8 = m[8], m12 = m[12];
+                m[0] = c * m0 + s * m[8];
+                m[4] = c * m4 + s * m[12];
+                m[8] = -s * m0 + c * m[8];
+                m[12] = -s * m4 + c * m[12];
+                return m;
+            },
+            multiply: (a, b) => {
+                const out = new Float32Array(16);
+                for (let i = 0; i < 4; i++) {
+                    for (let j = 0; j < 4; j++) {
+                        out[i * 4 + j] = 0;
+                        for (let k = 0; k < 4; k++) {
+                            out[i * 4 + j] += a[i * 4 + k] * b[k * 4 + j];
+                        }
+                    }
+                }
+                return out;
+            }
+        };
+
+        const vec3 = {
+            subtract: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]],
+            cross: (a, b) => [
+                a[1] * b[2] - a[2] * b[1],
+                a[2] * b[0] - a[0] * b[2],
+                a[0] * b[1] - a[1] * b[0]
+            ],
+            dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2],
+            normalize: v => {
+                const len = Math.sqrt(vec3.dot(v, v));
+                return [v[0] / len, v[1] / len, v[2] / len];
+            }
+        };
+
+        // Start Game
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>
