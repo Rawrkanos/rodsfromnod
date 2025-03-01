@@ -151,7 +151,7 @@ function launchRod() {
         rod.position.copy(gameState.target);
         
         // Corrected velocity calculation:
-        const directionTowardEarth = rod.position.clone().normalize().multiplyScalar(-500); // This pushes the rod toward Earth
+        const directionTowardEarth = rod.position.clone().normalize().multiplyScalar(500); // This pushes the rod toward Earth
         rod.velocity = directionTowardEarth;
 
         rod.mass = 1000; // kg
