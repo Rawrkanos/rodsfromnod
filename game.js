@@ -73,11 +73,35 @@ function render() {
     renderPass.end();
     device.queue.submit([commandEncoder.finish()]);
     
+    drawRod();
+    drawImpact();
+    
     if (rod.position[1] > 0) {
         calculatePhysics(deltaTime);
     }
     
     requestAnimationFrame(render);
+}
+
+function drawRod() {
+    let ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'gray';
+    let x = canvas.width / 2;
+    let y = (rod.position[1] / 30000) * canvas.height;
+    ctx.fillRect(x - 5, y, 10, 30);
+}
+
+function drawImpact() {
+    if (!impactData) return;
+    let ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'red';
+    let craterX = canvas.width / 2;
+    let craterY = canvas.height - 10;
+    let craterSize = impactData.craterRadius * 2;
+    ctx.beginPath();
+    ctx.arc(craterX, craterY, craterSize, 0, Math.PI * 2);
+    ctx.fill();
 }
 
 document.getElementById('dropButton').addEventListener('click', () => {
