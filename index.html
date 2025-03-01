@@ -1,390 +1,96 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Rod from God – Realistic Drop Simulator</title>
-  <style>
-    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
-    #renderCanvas { width: 100%; height: 100%; touch-action: none; }
-    /* Main UI Overlay */
-    #uiOverlay {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      z-index: 10;
-      background: rgba(0, 0, 0, 0.75);
-      color: #fff;
-      padding: 15px;
-      border-radius: 8px;
-      max-width: 350px;
-    }
-    #uiOverlay h1 { margin: 0 0 10px; font-size: 20px; }
-    #uiOverlay p { margin: 5px 0; }
-    #controls { margin-top: 10px; }
-    #controls button {
-      padding: 8px 12px;
-      font-size: 14px;
-      margin: 4px;
-      cursor: pointer;
-    }
-    /* Upgrades Panel */
-    #upgradesPanel {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      z-index: 10;
-      background: rgba(0,0,0,0.85);
-      color: #fff;
-      padding: 15px;
-      border-radius: 8px;
-      max-width: 300px;
-    }
-    #upgradesPanel h2 { margin-top: 0; }
-    #upgradesPanel button {
-      padding: 8px 12px;
-      font-size: 14px;
-      margin: 4px 0;
-      width: 100%;
-      cursor: pointer;
-    }
-    /* Picture-in-Picture (PIP) View */
-    #pipView {
-      position: absolute;
-      bottom: 10px;
-      right: 10px;
-      width: 320px;
-      height: 240px;
-      border: 2px solid #fff;
-      z-index: 15;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rod Drop Simulator</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
+        #ui { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0, 0, 0, 0.5); padding: 10px; border-radius: 5px; }
+        button { display: block; margin-top: 10px; padding: 10px; font-size: 16px; }
+    </style>
 </head>
 <body>
-  <canvas id="renderCanvas"></canvas>
-  <div id="uiOverlay">
-    <h1>Rod from God</h1>
-    <p><strong>Time:</strong> <span id="timeDisplay">0.00</span> s</p>
-    <p><strong>Altitude:</strong> <span id="altDisplay">0.00</span> m</p>
-    <p><strong>Velocity:</strong> <span id="velDisplay">0</span> m/s</p>
-    <p><strong>Impact Energy:</strong> <span id="keDisplay">0</span> J</p>
-    <p><strong>Crater:</strong> <span id="craterDisplay">N/A</span></p>
-    <p><strong>Score:</strong> <span id="scoreDisplay">0</span></p>
-    <div id="controls">
-      <button id="dropBtn">Drop Rod</button>
-      <button id="resetBtn">Reset Scene</button>
+    <div id="ui">
+        <h2>Rod Drop Simulator</h2>
+        <button id="dropButton">Drop Rod</button>
+        <p>Altitude: <span id="altitude">30000</span> m</p>
+        <p>Velocity: <span id="velocity">0</span> m/s</p>
+        <p>Impact Force: <span id="impact">-</span> kJ</p>
     </div>
-  </div>
-  <div id="upgradesPanel">
-    <h2>Upgrades</h2>
-    <p>Score: <span id="currentScore">0</span></p>
-    <button id="upgradeMassBtn">Upgrade Mass (Cost: 500)</button>
-    <button id="upgradeHeightBtn">Upgrade Drop Altitude (Cost: 500)</button>
-    <button id="upgradeQualityBtn">Upgrade Rod Quality (Cost: 2000)</button>
-  </div>
-  <div id="pipView"></div>
-
-  <!-- Babylon.js and Ammo.js libraries -->
-  <script src="https://cdn.babylonjs.com/babylon.js"></script>
-  <!-- Ammo.js is loaded asynchronously; see below -->
-  <script>
-  // Global game variables and upgrade settings
-  let gameScore = 0;
-  const upgrades = {
-    rodMass: 10,       // in kg (starts at 10, can be upgraded)
-    dropHeight: 100,   // in m (initial drop altitude)
-    rodQuality: 0      // 0: Basic, 1: Improved, 2: Advanced, 3: Optimal
-  };
-  const qualityNames = ["Basic", "Improved", "Advanced", "Optimal"];
-  let upgradeCosts = {
-    rodMass: 500,
-    dropHeight: 500,
-    rodQuality: 2000
-  };
-
-  // Physics constants
-  const g = 9.81;                // m/s²
-  const rho0 = 1.225;            // kg/m³
-  const H = 7000;                // m
-  const C_D_base = 0.04;         // base drag coefficient
-  const tungstenDensity = 19300; // kg/m³
-
-  // Atmospheric factor (randomized per drop)
-  let atmFactor = 1.0;
-
-  // Simulation state variables
-  let simStartTime = 0;
-  let simActive = false;
-  let impactOccurred = false;
-
-  // Babylon.js variables
-  let engine, scene;
-  let mainCamera, pipCamera;
-  let rodMesh, ground;
-  let particleSystem; // for ejecta
-  let canvas = document.getElementById("renderCanvas");
-
-  // UI elements
-  const timeDisplay = document.getElementById("timeDisplay");
-  const altDisplay = document.getElementById("altDisplay");
-  const velDisplay = document.getElementById("velDisplay");
-  const keDisplay = document.getElementById("keDisplay");
-  const craterDisplay = document.getElementById("craterDisplay");
-  const scoreDisplay = document.getElementById("scoreDisplay");
-  const currentScoreDisplay = document.getElementById("currentScore");
-
-  // Create the Babylon.js scene with physics and visuals.
-  function createScene() {
-    engine = new BABYLON.Engine(canvas, true);
-    scene = new BABYLON.Scene(engine);
-    // Use Ammo.js physics. (Ammo.js is loaded below.)
-    scene.enablePhysics(new BABYLON.Vector3(0, -g, 0));
-
-    // Main camera: side view
-    mainCamera = new BABYLON.ArcRotateCamera("MainCam", -Math.PI / 2, Math.PI / 4, 800, new BABYLON.Vector3(0, 0, 0), scene);
-    mainCamera.attachControl(canvas, true);
-
-    // Create a skybox
-    let skybox = BABYLON.MeshBuilder.CreateBox("skyBox", { size: 2000 }, scene);
-    let skyboxMaterial = new BABYLON.StandardMaterial("skyBoxMat", scene);
-    skyboxMaterial.backFaceCulling = false;
-    skyboxMaterial.disableLighting = true;
-    skyboxMaterial.reflectionTexture = new BABYLON.CubeTexture("https://playground.babylonjs.com/textures/skybox", scene);
-    skyboxMaterial.reflectionTexture.coordinatesMode = BABYLON.Texture.SKYBOX_MODE;
-    skybox.material = skyboxMaterial;
-
-    // Ground: simulate the Great Salt Flats.
-    ground = BABYLON.MeshBuilder.CreateGround("ground", { width: 3000, height: 3000, subdivisions: 50 }, scene);
-    let groundMat = new BABYLON.StandardMaterial("groundMat", scene);
-    groundMat.diffuseColor = new BABYLON.Color3(0.87, 0.84, 0.70);
-    ground.material = groundMat;
-    ground.position.y = 0;
-    ground.physicsImpostor = new BABYLON.PhysicsImpostor(ground, BABYLON.PhysicsImpostor.BoxImpostor, { mass: 0, restitution: 0.1 }, scene);
-
-    // PIP camera: first-person view from rod.
-    pipCamera = new BABYLON.FreeCamera("pipCam", new BABYLON.Vector3(0, 0, 0), scene);
-    pipCamera.fov = 0.8;
-    // Create a separate renderer for the PIP view.
-    let pipDiv = document.getElementById("pipView");
-    pipDiv.innerHTML = ""; // clear previous
-    let pipCanvas = document.createElement("canvas");
-    pipCanvas.width = 320;
-    pipCanvas.height = 240;
-    pipDiv.appendChild(pipCanvas);
-    var pipEngine = new BABYLON.Engine(pipCanvas, true);
-    
-    // Create particle system for ejecta.
-    particleSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
-    particleSystem.particleTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/flare.png", scene);
-    particleSystem.emitter = new BABYLON.Vector3(0, 0, 0);
-    particleSystem.minEmitBox = new BABYLON.Vector3(-1, 0, -1);
-    particleSystem.maxEmitBox = new BABYLON.Vector3(1, 0, 1);
-    particleSystem.color1 = new BABYLON.Color4(1, 0.8, 0.5, 1);
-    particleSystem.color2 = new BABYLON.Color4(1, 0.5, 0.3, 1);
-    particleSystem.minSize = 0.5;
-    particleSystem.maxSize = 1.5;
-    particleSystem.minLifeTime = 0.3;
-    particleSystem.maxLifeTime = 1.0;
-    particleSystem.emitRate = 500;
-    particleSystem.gravity = new BABYLON.Vector3(0, -g, 0);
-    particleSystem.disposeOnStop = true;
-
-    // Return both main and pip engines/cameras for later use.
-    return { scene, pipEngine, pipCamera };
-  }
-
-  // Create the tungsten rod mesh (and physics impostor) based on current upgrades.
-  function createRod() {
-    let massVal = upgrades.rodMass;
-    let volume = massVal / tungstenDensity;
-    let mesh;
-    // Choose shape based on rodQuality.
-    if (upgrades.rodQuality === 0) {
-      // Basic: cylinder
-      let radius = Math.cbrt(volume / (4 * Math.PI));
-      let height = 4 * radius;
-      mesh = BABYLON.MeshBuilder.CreateCylinder("rod", { diameter: 2 * radius, height: height, tessellation: 32 }, scene);
-    } else if (upgrades.rodQuality === 1) {
-      // Improved: tapered cylinder (simulate with a cone)
-      let radius = Math.cbrt(volume / (Math.PI / 3));
-      let height = 3 * radius;
-      mesh = BABYLON.MeshBuilder.CreateCone("rod", { diameter: 2 * radius, height: height, tessellation: 32 }, scene);
-    } else if (upgrades.rodQuality === 2) {
-      // Advanced: a sharper cone
-      let radius = Math.cbrt(volume / (Math.PI / 3));
-      let height = 2.5 * radius;
-      mesh = BABYLON.MeshBuilder.CreateCone("rod", { diameter: 2 * radius, height: height, tessellation: 64 }, scene);
-    } else {
-      // Optimal: use a refined cone with smoother edges
-      let radius = Math.cbrt(volume / (Math.PI / 3));
-      let height = 2.0 * radius;
-      mesh = BABYLON.MeshBuilder.CreateCone("rod", { diameter: 2 * radius, height: height, tessellation: 96 }, scene);
-    }
-    let rodMat = new BABYLON.StandardMaterial("rodMat", scene);
-    rodMat.diffuseColor = new BABYLON.Color3(0.6, 0.6, 0.6);
-    rodMat.metallic = 1;
-    rodMat.roughness = 0.2;
-    mesh.material = rodMat;
-    // Position the rod at drop altitude (centered at origin horizontally).
-    mesh.position = new BABYLON.Vector3(0, upgrades.dropHeight, 0);
-    // Create physics impostor. We approximate with a cylinder impostor.
-    mesh.physicsImpostor = new BABYLON.PhysicsImpostor(mesh, BABYLON.PhysicsImpostor.CylinderImpostor, { mass: massVal, restitution: 0.1, friction: 0.5 }, scene);
-    return mesh;
-  }
-
-  // Update UI elements.
-  function updateUI(simTime, altitude, velocity, ke, craterInfo) {
-    timeDisplay.textContent = simTime.toFixed(2);
-    altDisplay.textContent = altitude.toFixed(2);
-    velDisplay.textContent = Math.abs(velocity).toFixed(0);
-    keDisplay.textContent = Math.floor(ke).toString();
-    craterDisplay.textContent = craterInfo;
-    scoreDisplay.textContent = gameScore.toString();
-    currentScoreDisplay.textContent = gameScore.toString();
-  }
-
-  // Global simulation variables.
-  let simStartTime = 0;
-  let lastUpdateTime = 0;
-  let rodDropped = false;
-  let pipEngine; // secondary engine reference
-
-  // Start the rod drop.
-  function dropRod() {
-    if (rodDropped) return;
-    // Randomize atmospheric factor.
-    atmFactor = 0.9 + Math.random() * 0.2;
-    rodMesh = createRod();
-    rodDropped = true;
-    simStartTime = performance.now();
-    lastUpdateTime = simStartTime;
-    simActive = true;
-    impactOccurred = false;
-  }
-
-  // Reset the scene.
-  function resetScene() {
-    if (rodMesh) {
-      rodMesh.dispose();
-      rodMesh = null;
-    }
-    // Stop particle system if active.
-    if (particleSystem) {
-      particleSystem.stop();
-    }
-    // Dispose crater meshes (if any exist, here we assume names starting with "crater")
-    scene.meshes.filter(m => m.name.indexOf("crater") === 0).forEach(m => m.dispose());
-    simActive = false;
-    rodDropped = false;
-    updateUI(0, upgrades.dropHeight, 0, 0, "N/A");
-  }
-
-  // Process impact when the rod hits the ground.
-  function processImpact() {
-    if (impactOccurred) return;
-    impactOccurred = true;
-    // Get impact velocity and compute kinetic energy.
-    let impactVelocity = rodMesh.physicsImpostor.getLinearVelocity().length();
-    let massVal = upgrades.rodMass;
-    let ke = 0.5 * massVal * impactVelocity * impactVelocity;
-    // Estimate crater dimensions.
-    let craterWidth = Math.cbrt(ke) * 0.05;
-    let craterDepth = craterWidth * 0.3;
-    let ejectaDistance = craterWidth * 2;
-    let craterVolume = Math.PI * Math.pow(craterWidth / 2, 2) * craterDepth;
-    // Create crater mesh.
-    let craterMesh = BABYLON.MeshBuilder.CreateDisc("crater", { radius: craterWidth / 2, tessellation: 64 }, scene);
-    let craterMat = new BABYLON.StandardMaterial("craterMat", scene);
-    craterMat.diffuseColor = new BABYLON.Color3(0.2, 0.1, 0);
-    craterMesh.material = craterMat;
-    craterMesh.rotation.x = Math.PI / 2;
-    let pos = rodMesh.position;
-    craterMesh.position = new BABYLON.Vector3(pos.x, 0.1, pos.z);
-    // Start particle ejecta.
-    particleSystem.emitter = new BABYLON.Vector3(pos.x, 0.5, pos.z);
-    particleSystem.minEmitBox = new BABYLON.Vector3(-ejectaDistance/2, 0, -ejectaDistance/2);
-    particleSystem.maxEmitBox = new BABYLON.Vector3(ejectaDistance/2, 0, ejectaDistance/2);
-    particleSystem.start();
-    setTimeout(() => { particleSystem.stop(); }, 1500);
-    // Score calculation: if impact is near center (within 5 m) get 10x bonus.
-    let distToTarget = rodMesh.position.length();
-    let multiplier = (distToTarget <= 5) ? 10 : Math.max(1, 10 - Math.log(distToTarget + 1));
-    let dropScore = Math.floor((massVal * (upgrades.dropHeight / 100)) * multiplier / 1000);
-    gameScore += dropScore;
-    updateUI((performance.now() - simStartTime)/1000, pos.y, impactVelocity, ke,
-      `W:${craterWidth.toFixed(2)}m, D:${craterDepth.toFixed(2)}m, Ej:${ejectaDistance.toFixed(2)}m, Vol:${craterVolume.toFixed(2)}m³`);
-  }
-
-  // Animation loop.
-  function animate() {
-    engine.runRenderLoop(function () {
-      let now = performance.now();
-      if (simActive && rodMesh) {
-        let deltaTime = (now - lastUpdateTime) / 1000;
-        lastUpdateTime = now;
-        // Check impact: if rod is near ground (y <= 1 m)
-        if (rodMesh.position.y <= 1.0) {
-          processImpact();
-          simActive = false;
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer;
+        let rod, ground;
+        let altitude = 30000, velocity = 0, impactForce = 0;
+        let gravity = 9.81, airDensity = 1.225, dragCoefficient = 0.82;
+        let dropping = false;
+        
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 50000);
+            camera.position.set(0, 1000, 3000);
+            
+            renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            
+            let light = new THREE.DirectionalLight(0xffffff, 1);
+            light.position.set(10, 10, 10).normalize();
+            scene.add(light);
+            
+            ground = new THREE.Mesh(new THREE.PlaneGeometry(5000, 5000), new THREE.MeshStandardMaterial({color: 0x228B22}));
+            ground.rotation.x = -Math.PI / 2;
+            scene.add(ground);
+            
+            rod = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 50), new THREE.MeshStandardMaterial({color: 0x888888}));
+            rod.position.y = altitude;
+            scene.add(rod);
+            
+            animate();
         }
-        // Update UI: use physics engine's time (here we approximate with elapsed time)
-        let simTime = (now - simStartTime) / 1000;
-        let posY = rodMesh.position.y;
-        let velocity = rodMesh.physicsImpostor.getLinearVelocity().length();
-        updateUI(simTime, posY, velocity, 0, "In Flight");
-      }
-      scene.render();
-      // Render PIP view
-      if (rodMesh) {
-        pipCamera.position = rodMesh.position.add(new BABYLON.Vector3(0, 1, 0));
-        pipCamera.setTarget(rodMesh.position.add(new BABYLON.Vector3(0, -5, 0)));
-      }
-      pipEngine.render(scene, pipCamera);
-    });
-  }
-
-  // -------------------------------
-  // Set up UI event listeners.
-  document.getElementById("dropBtn").addEventListener("click", dropRod);
-  document.getElementById("resetBtn").addEventListener("click", resetScene);
-  document.getElementById("upgradeMassBtn").addEventListener("click", function() {
-    if (gameScore >= upgradeCosts.rodMass && upgrades.rodMass < 1e6) {
-      gameScore -= upgradeCosts.rodMass;
-      upgrades.rodMass *= 2;
-      upgradeCosts.rodMass = Math.floor(upgradeCosts.rodMass * 1.5);
-      updateUI(0, upgrades.dropHeight, 0, 0, "Upgraded");
-    }
-  });
-  document.getElementById("upgradeHeightBtn").addEventListener("click", function() {
-    if (gameScore >= upgradeCosts.dropHeight && upgrades.dropHeight < 1e6) {
-      gameScore -= upgradeCosts.dropHeight;
-      upgrades.dropHeight *= 2;
-      upgradeCosts.dropHeight = Math.floor(upgradeCosts.dropHeight * 1.5);
-      updateUI(0, upgrades.dropHeight, 0, 0, "Upgraded");
-    }
-  });
-  document.getElementById("upgradeQualityBtn").addEventListener("click", function() {
-    if (gameScore >= upgradeCosts.rodQuality && upgrades.rodQuality < qualityNames.length - 1) {
-      gameScore -= upgradeCosts.rodQuality;
-      upgrades.rodQuality++;
-      upgradeCosts.rodQuality = Math.floor(upgradeCosts.rodQuality * 2);
-      updateUI(0, upgrades.dropHeight, 0, 0, "Upgraded");
-    }
-  });
-
-  // -------------------------------
-  // Wait for Ammo.js to load then create scene.
-  Ammo().then(function() {
-    let result = createScene();
-    // Save the secondary engine (for PIP view)
-    pipEngine = result.pipEngine;
-    animate();
-  });
-
-  // Resize handling.
-  window.addEventListener("resize", function() {
-    engine.resize();
-    pipEngine.resize();
-  });
-  </script>
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            if (dropping) updatePhysics();
+            renderer.render(scene, camera);
+        }
+        
+        function updatePhysics() {
+            let dragForce = 0.5 * airDensity * velocity * velocity * dragCoefficient;
+            let netForce = 100 * gravity - dragForce;
+            let acceleration = netForce / 100;
+            velocity += acceleration * 0.016;
+            altitude -= velocity * 0.016;
+            rod.position.y = altitude;
+            
+            document.getElementById('altitude').textContent = Math.max(0, Math.round(altitude));
+            document.getElementById('velocity').textContent = Math.round(velocity);
+            
+            if (altitude <= 0) {
+                dropping = false;
+                impactForce = 0.5 * 100 * velocity * velocity / 1000;
+                document.getElementById('impact').textContent = Math.round(impactForce);
+                createCrater();
+            }
+        }
+        
+        function createCrater() {
+            let crater = new THREE.Mesh(new THREE.CircleGeometry(impactForce * 2, 32), new THREE.MeshStandardMaterial({color: 0x3B3B3B}));
+            crater.rotation.x = -Math.PI / 2;
+            crater.position.y = 0.1;
+            scene.add(crater);
+        }
+        
+        document.getElementById('dropButton').addEventListener('click', () => {
+            altitude = 30000;
+            velocity = 0;
+            impactForce = 0;
+            dropping = true;
+            document.getElementById('impact').textContent = '-';
+        });
+        
+        window.onload = init;
+    </script>
 </body>
 </html>
