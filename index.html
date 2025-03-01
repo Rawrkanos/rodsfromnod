@@ -10,20 +10,25 @@
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             color: #0f0; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between;
         }
-        #resources { padding: 10px; background: rgba(0, 0, 0, 0.7); pointer-events: all; }
-        #resources span { margin-right: 15px; font-size: 18px; text-shadow: 0 0 5px #0f0; }
-        #controls { display: flex; flex-wrap: wrap; padding: 10px; background: rgba(0, 0, 0, 0.7); pointer-events: all; }
+        #resources { padding: 15px; background: rgba(0, 0, 0, 0.8); pointer-events: all; }
+        #resources span { margin-right: 20px; font-size: 20px; text-shadow: 0 0 8px #0f0; }
+        #controls { display: flex; flex-wrap: wrap; padding: 15px; background: rgba(0, 0, 0, 0.8); pointer-events: all; }
         #controls button {
-            margin: 5px; padding: 10px 20px; background: #111; color: #0f0; border: 1px solid #0f0;
-            cursor: pointer; font-size: 16px; transition: all 0.3s; text-transform: uppercase;
+            margin: 8px; padding: 12px 25px; background: #111; color: #0f0; border: 2px solid #0f0;
+            cursor: pointer; font-size: 18px; transition: all 0.3s; text-transform: uppercase; border-radius: 5px;
         }
-        #controls button:hover { background: #0f0; color: #000; box-shadow: 0 0 10px #0f0; }
-        #status { padding: 10px; background: rgba(0, 0, 0, 0.7); text-align: center; }
+        #controls button:hover { background: #0f0; color: #000; box-shadow: 0 0 15px #0f0; }
+        #status { padding: 15px; background: rgba(0, 0, 0, 0.8); text-align: center; font-size: 20px; }
         #map {
-            position: absolute; bottom: 20px; right: 20px; width: 350px; padding: 10px;
-            background: rgba(0, 0, 0, 0.8); border: 1px solid #0f0; font-size: 14px;
+            position: absolute; bottom: 25px; right: 25px; width: 400px; padding: 15px;
+            background: rgba(0, 0, 0, 0.9); border: 2px solid #0f0; font-size: 16px; border-radius: 5px;
         }
-        #map div { margin: 5px 0; }
+        #map div { margin: 8px 0; }
+        #alerts {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(255, 0, 0, 0.7); padding: 20px; font-size: 24px; text-align: center;
+            border: 2px solid #f00; display: none; color: #fff; text-shadow: 0 0 10px #f00;
+        }
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
     </style>
 </head>
@@ -36,26 +41,29 @@
             <span>Tech: <span id="tech">0</span></span>
         </div>
         <div id="controls">
-            <button onclick="dropRod()">Launch Strike</button>
-            <button onclick="upgradeSatellites()">Add Satellite (50 Metal)</button>
-            <button onclick="upgradeRods()">More Rods (100 Metal)</button>
-            <button onclick="upgradePower()">Enhance Power (150 Metal)</button>
-            <button onclick="unlockAutomation()">Automate (200 Tech)</button>
-            <button onclick="unlockPrecision()">Precision (500 Tech)</button>
-            <button onclick="buildDyson()">Dyson Swarm (10K Tech)</button>
-            <button onclick="buildColossus()">Rod Colossus (50K Tech)</button>
-            <button onclick="resetWorld()">Orbital Reset</button>
+            <button onclick="dropRod()">Launch Kinetic Strike</button>
+            <button onclick="upgradeSatellites()">Deploy Satellite (50 Metal)</button>
+            <button onclick="upgradeRods()">Increase Rods (100 Metal)</button>
+            <button onclick="upgradePower()">Enhance Payload (150 Metal)</button>
+            <button onclick="unlockAutomation()">Activate AI Control (200 Tech)</button>
+            <button onclick="unlockPrecision()">Precision Guidance (500 Tech)</button>
+            <button onclick="buildDyson()">Construct Dyson Swarm (10K Tech)</button>
+            <button onclick="buildColossus()">Forge Rod Colossus (50K Tech)</button>
+            <button onclick="resetWorld()">Initiate Orbital Reset</button>
         </div>
         <div id="status">
-            Phase: <span id="phase">1</span> | Time: <span id="time">0</span>h | Satellites: <span id="satellites">1</span> | Rods/Drop: <span id="rods">1</span> | Power: <span id="rodPower">1</span>
+            Phase: <span id="phase">1</span> | Time: <span id="time">0</span>h | 
+            Satellites: <span id="satellites">1</span> | Rods/Drop: <span id="rods">1</span> | 
+            Power: <span id="rodPower">1</span>
         </div>
         <div id="map">
-            <div>Geopolitical Status:</div>
-            <div>USA: <span id="usa">100</span></div>
-            <div>China: <span id="china">100</span></div>
-            <div>Russia: <span id="russia">100</span></div>
-            <div>EU: <span id="eu">100</span></div>
+            <div>Geopolitical Theater:</div>
+            <div>USA: <span id="usa">100</span>% Stability</div>
+            <div>China: <span id="china">100</span>% Stability</div>
+            <div>Russia: <span id="russia">100</span>% Stability</div>
+            <div>EU: <span id="eu">100</span>% Stability</div>
         </div>
+        <div id="alerts"></div>
     </div>
 
     <script>
@@ -66,13 +74,16 @@
             automation: false, precision: false, dyson: false, colossus: false,
             phase: 1, timePlayed: 0, lastDrop: 0,
             nations: { usa: 100, china: 100, russia: 100, eu: 100 },
-            impacts: []
+            impacts: [],
+            weather: { wind: [0, 0, 0], turbulence: 0 },
+            defenses: 0
         };
 
         // WebGPU Setup
         const canvas = document.getElementById('canvas');
-        const adapter = await navigator.gpu.requestAdapter();
-        const device = await adapter.requestDevice();
+        const adapter = navigator.gpu.requestAdapter();
+        if (!adapter) throw new Error("WebGPU not supported");
+        const device = adapter.requestDevice();
         const context = canvas.getContext('webgpu');
         const format = navigator.gpu.getPreferredCanvasFormat();
         context.configure({ device, format, alphaMode: 'opaque' });
@@ -89,12 +100,15 @@
             struct Uniforms {
                 modelViewProj : mat4x4<f32>,
                 time : f32,
+                terrainScale : f32,
             };
             @binding(0) @group(0) var<uniform> uniforms : Uniforms;
+            @binding(1) @group(0) var<storage> terrain : array<f32>;
 
             struct VertexInput {
                 @location(0) position : vec3<f32>,
                 @location(1) normal : vec3<f32>,
+                @builtin(vertex_index) vertexIndex : u32,
             };
             struct VertexOutput {
                 @builtin(position) position : vec4<f32>,
@@ -105,10 +119,12 @@
             @vertex
             fn main(input : VertexInput) -> VertexOutput {
                 var output : VertexOutput;
-                output.pos = input.position;
-                output.normal = input.normal;
-                let displaced = input.position + input.normal * sin(length(input.position) * 0.0001 + uniforms.time) * 5000.0;
+                let idx = input.vertexIndex / 3u;
+                let height = terrain[idx % arrayLength(&terrain)] * uniforms.terrainScale;
+                let displaced = input.position + input.normal * (height + sin(length(input.position) * 0.00005 + uniforms.time) * 3000.0);
                 output.position = uniforms.modelViewProj * vec4<f32>(displaced, 1.0);
+                output.normal = normalize(input.normal + vec3<f32>(0.0, height * 0.0001, 0.0));
+                output.pos = displaced;
                 return output;
             }
         `;
@@ -121,23 +137,62 @@
             @fragment
             fn main(input : FragmentInput) -> @location(0) vec4<f32> {
                 let lightDir = normalize(vec3<f32>(1.0, 1.0, 1.0));
-                let diffuse = max(dot(input.normal, lightDir), 0.2);
-                let baseColor = mix(vec3<f32>(0.05, 0.2, 0.6), vec3<f32>(0.3, 0.5, 0.1), step(0.0, input.pos.y));
+                let diffuse = max(dot(input.normal, lightDir), 0.15);
                 let height = length(input.pos) - 6371000.0;
-                let cloud = smoothstep(8000.0, 12000.0, height) * 0.9;
+                let baseColor = mix(vec3<f32>(0.05, 0.15, 0.5), vec3<f32>(0.25, 0.45, 0.05), smoothstep(-5000.0, 0.0, height));
+                let cloud = smoothstep(7000.0, 14000.0, height + sin(length(input.pos) * 0.0001) * 2000.0) * 0.85;
                 let finalColor = mix(baseColor * diffuse, vec3<f32>(0.9, 0.95, 1.0), cloud);
-                return vec4<f32>(finalColor + pow(diffuse, 10.0) * 0.3, 1.0); // Specular highlight
+                let specular = pow(diffuse, 20.0) * 0.4;
+                return vec4<f32>(finalColor + vec3<f32>(specular), 1.0);
+            }
+        `;
+
+        const rodVertexShader = `
+            struct Uniforms {
+                modelViewProj : mat4x4<f32>,
+                time : f32,
+                terrainScale : f32,
+            };
+            @binding(0) @group(0) var<uniform> uniforms : Uniforms;
+            @binding(1) @group(0) var<storage> rodPositions : array<vec4<f32>>;
+
+            struct VertexInput {
+                @location(0) position : vec3<f32>,
+                @location(1) normal : vec3<f32>,
+                @builtin(instance_index) instanceIndex : u32,
+            };
+            struct VertexOutput {
+                @builtin(position) position : vec4<f32>,
+                @location(0) normal : vec3<f32>,
+                @location(1) pos : vec3<f32>,
+            };
+
+            @vertex
+            fn main(input : VertexInput) -> VertexOutput {
+                var output : VertexOutput;
+                let rodPos = rodPositions[input.instanceIndex];
+                let worldPos = rodPos.xyz + input.position * (1.0 + rodPos.w * 0.001);
+                output.position = uniforms.modelViewProj * vec4<f32>(worldPos, 1.0);
+                output.normal = input.normal;
+                output.pos = worldPos;
+                return output;
             }
         `;
 
         const rodFragmentShader = `
             struct FragmentInput {
-                @location(0) pos : vec3<f32>,
+                @location(0) normal : vec3<f32>,
+                @location(1) pos : vec3<f32>,
             };
             @fragment
             fn main(input : FragmentInput) -> @location(0) vec4<f32> {
-                let heat = smoothstep(36000000.0, 6371000.0, length(input.pos));
-                return vec4<f32>(1.0, 0.5 - heat * 0.4, 0.0, 1.0); // Glowing reentry effect
+                let altitude = length(input.pos) - 6371000.0;
+                let heat = smoothstep(100000.0, 10000.0, altitude);
+                let baseColor = mix(vec3<f32>(0.8, 0.8, 0.8), vec3<f32>(1.0, 0.3, 0.0), heat);
+                let lightDir = normalize(vec3<f32>(1.0, 1.0, 1.0));
+                let diffuse = max(dot(input.normal, lightDir), 0.2);
+                let glow = pow(1.0 - heat, 2.0) * 0.5;
+                return vec4<f32>(baseColor * diffuse + vec3<f32>(glow, glow * 0.5, 0.0), 1.0);
             }
         `;
 
@@ -145,26 +200,41 @@
             struct Uniforms {
                 modelViewProj : mat4x4<f32>,
                 time : f32,
+                terrainScale : f32,
             };
             @binding(0) @group(0) var<uniform> uniforms : Uniforms;
             @binding(1) @group(0) var<storage> particles : array<vec4<f32>>;
 
+            struct VertexOutput {
+                @builtin(position) position : vec4<f32>,
+                @location(0) life : f32,
+            };
+
             @vertex
-            fn main(@builtin(vertex_index) VertexIndex : u32) -> @builtin(position) vec4<f32> {
-                let pos = particles[VertexIndex / 6u];
-                let size = 1000.0 * pos.w;
+            fn main(@builtin(vertex_index) VertexIndex : u32) -> VertexOutput {
+                var output : VertexOutput;
+                let idx = VertexIndex / 6u;
+                let pos = particles[idx];
+                let size = 2000.0 * pos.w;
                 let offsets = array<vec2<f32>, 6>(
                     vec2<f32>(-size, -size), vec2<f32>(size, -size), vec2<f32>(size, size),
                     vec2<f32>(-size, -size), vec2<f32>(size, size), vec2<f32>(-size, size)
                 );
-                return uniforms.modelViewProj * vec4<f32>(pos.xyz + vec3<f32>(offsets[VertexIndex % 6u], 0.0), 1.0);
+                let worldPos = pos.xyz + vec3<f32>(offsets[VertexIndex % 6u], 0.0);
+                output.position = uniforms.modelViewProj * vec4<f32>(worldPos, 1.0);
+                output.life = pos.w;
+                return output;
             }
         `;
 
         const particleFragmentShader = `
+            struct FragmentInput {
+                @location(0) life : f32,
+            };
             @fragment
-            fn main() -> @location(0) vec4<f32> {
-                return vec4<f32>(0.8, 0.6, 0.4, 0.5); // Dust/smoke
+            fn main(input : FragmentInput) -> @location(0) vec4<f32> {
+                let alpha = smoothstep(0.0, 1.0, input.life) * 0.6;
+                return vec4<f32>(0.8, 0.6, 0.4, alpha);
             }
         `;
 
@@ -177,10 +247,14 @@
             struct Terrain {
                 height : f32,
             };
+            struct Impact {
+                position : vec3<f32>,
+                mass : f32,
+            };
             @binding(0) @group(0) var<storage, read_write> rods : array<Rod>;
             @binding(1) @group(0) var<storage, read_write> terrain : array<Terrain>;
-            @binding(2) @group(0) var<storage, read_write> impacts : array<vec4<f32>>;
-            @binding(3) @group(0) var<uniform> time : f32;
+            @binding(2) @group(0) var<storage, read_write> impacts : array<Impact>;
+            @binding(3) @group(0) var<uniform> params : vec4<f32>; // time, windX, windY, windZ
 
             @compute @workgroup_size(64)
             fn main(@builtin(global_invocation_id) id : vec3<u32>) {
@@ -190,27 +264,46 @@
                 let G = 6.67430e-11;
                 let M = 5.972e24;
                 let r = length(rods[i].position);
-                let accel = -G * M / (r * r * r) * rods[i].position;
+                let dt = params[0];
+                let wind = vec3<f32>(params[1], params[2], params[3]);
 
+                let gravity = -G * M / (r * r * r) * rods[i].position;
                 let altitude = r - 6371000.0;
-                if (altitude < 100000.0) {
-                    let density = exp(-altitude / 8000.0) * 1.225;
-                    let drag = -0.5 * density * rods[i].velocity * length(rods[i].velocity) * 0.01;
-                    accel = accel + drag / rods[i].mass;
+                var accel = gravity;
+
+                if (altitude < 120000.0) {
+                    let density = exp(-altitude / 7500.0) * 1.225;
+                    let vMag = length(rods[i].velocity);
+                    let drag = -0.5 * density * vMag * rods[i].velocity * 0.015;
+                    accel = accel + drag / rods[i].mass + wind * 0.1;
                 }
 
-                rods[i].velocity = rods[i].velocity + accel * time;
-                rods[i].position = rods[i].position + rods[i].velocity * time;
+                rods[i].velocity = rods[i].velocity + accel * dt;
+                rods[i].position = rods[i].position + rods[i].velocity * dt;
 
-                if (altitude < 1000.0) {
+                if (altitude < 500.0) {
                     let theta = acos(rods[i].position.y / r);
                     let phi = atan2(rods[i].position.z, rods[i].position.x);
-                    let lat = u32(floor(theta / 3.14159 * 128.0));
-                    let lon = u32(floor((phi + 3.14159) / (2.0 * 3.14159) * 128.0));
-                    let idx = lat * 128u + lon;
+                    let lat = u32(floor(theta / 3.14159 * 256.0)) % 256u;
+                    let lon = u32(floor((phi + 3.14159) / (2.0 * 3.14159) * 256.0)) % 256u;
+                    let idx = lat * 256u + lon;
                     if (idx < arrayLength(&terrain)) {
-                        terrain[idx].height -= rods[i].mass * 0.0005;
-                        impacts[i] = vec4<f32>(rods[i].position, rods[i].mass);
+                        let craterDepth = rods[i].mass * 0.0008;
+                        terrain[idx].height -= craterDepth;
+
+                        for (var dy = -2; dy <= 2; dy = dy + 1) {
+                            for (var dx = -2; dx <= 2; dx = dx + 1) {
+                                let nLat = (lat + dy + 256u) % 256u;
+                                let nLon = (lon + dx + 256u) % 256u;
+                                let nIdx = nLat * 256u + nLon;
+                                if (nIdx < arrayLength(&terrain)) {
+                                    let dist = length(vec2<f32>(f32(dx), f32(dy)));
+                                    terrain[nIdx].height -= craterDepth * max(0.0, 1.0 - dist / 2.0);
+                                }
+                            }
+                        }
+
+                        impacts[i] = Impact(rods[i].position, rods[i].mass);
                         rods[i].position = vec3<f32>(0.0);
                         rods[i].velocity = vec3<f32>(0.0);
                     }
@@ -224,15 +317,18 @@
                 velocity : vec4<f32>,
             };
             @binding(0) @group(0) var<storage, read_write> particles : array<Particle>;
-            @binding(1) @group(0) var<uniform> time : f32;
+            @binding(1) @group(0) var<uniform> params : vec4<f32>;
 
             @compute @workgroup_size(64)
             fn main(@builtin(global_invocation_id) id : vec3<u32>) {
                 let i = id.x;
                 if (i >= arrayLength(&particles)) { return; }
-                particles[i].position = particles[i].position + particles[i].velocity * time;
-                particles[i].position.w = particles[i].position.w - time * 0.1;
-                if (particles[i].position.w <= 0.0) {
+                let dt = params[0];
+                let wind = vec3<f32>(params[1], params[2], params[3]);
+                particles[i].position = particles[i].position + particles[i].velocity * dt;
+                particles[i].velocity.xyz = particles[i].velocity.xyz + wind * 0.05 - vec3<f32>(0.0, 9.81 * dt, 0.0);
+                particles[i].position.w = particles[i].position.w - dt * 0.15;
+                if (particles[i].position.w <= 0.0 || length(particles[i].position.xyz) < 6371000.0) {
                     particles[i].position = vec4<f32>(0.0);
                     particles[i].velocity = vec4<f32>(0.0);
                 }
@@ -241,7 +337,7 @@
 
         // Earth Geometry
         const earthRadius = 6371000;
-        const segments = 128;
+        const segments = 256;
         const vertices = [];
         const indices = [];
         const terrainData = new Float32Array(segments * segments);
@@ -288,18 +384,22 @@
         // Rods
         let rods = [{ position: [0, 36000000, 0], velocity: [0, 0, 0], mass: 1000 }];
         const rodBuffer = device.createBuffer({
-            size: 4096 * 16,
+            size: 16384 * 16,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+        });
+        const rodPositionBuffer = device.createBuffer({
+            size: 16384 * 16,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
         const impactBuffer = device.createBuffer({
-            size: 4096 * 16,
+            size: 16384 * 16,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
         // Rod Geometry
         const rodVertices = new Float32Array([
-            -200, -1000, -200, 0, 0, 1,  200, -1000, -200, 0, 0, 1,  200, 1000, -200, 0, 0, 1,  -200, 1000, -200, 0, 0, 1,
-            -200, -1000, 200, 0, 0, 1,   200, -1000, 200, 0, 0, 1,   200, 1000, 200, 0, 0, 1,   -200, 1000, 200, 0, 0, 1
+            -250, -1500, -250, 0, 0, 1,  250, -1500, -250, 0, 0, 1,  250, 1500, -250, 0, 0, 1,  -250, 1500, -250, 0, 0, 1,
+            -250, -1500, 250, 0, 0, 1,   250, -1500, 250, 0, 0, 1,   250, 1500, 250, 0, 0, 1,   -250, 1500, 250, 0, 0, 1
         ]);
         const rodIndices = new Uint32Array([0,1,2, 0,2,3, 4,5,6, 4,6,7, 0,1,5, 0,5,4, 2,3,7, 2,7,6, 0,3,7, 0,7,4, 1,2,6, 1,6,5]);
         const rodVertexBuffer = device.createBuffer({
@@ -321,46 +421,72 @@
         // Particles
         let particles = [];
         const particleBuffer = device.createBuffer({
-            size: 16384 * 32,
+            size: 65536 * 32,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.VERTEX
         });
 
         // Pipelines
         const earthPipeline = device.createRenderPipeline({
             layout: 'auto',
-            vertex: { module: device.createShaderModule({ code: vertexShader }), entryPoint: 'main', buffers: [{
-                arrayStride: 24,
-                attributes: [
-                    { shaderLocation: 0, offset: 0, format: 'float32x3' },
-                    { shaderLocation: 1, offset: 12, format: 'float32x3' }
-                ]
-            }]},
-            fragment: { module: device.createShaderModule({ code: fragmentShader }), entryPoint: 'main', targets: [{ format }] },
+            vertex: {
+                module: device.createShaderModule({ code: vertexShader }),
+                entryPoint: 'main',
+                buffers: [{
+                    arrayStride: 24,
+                    attributes: [
+                        { shaderLocation: 0, offset: 0, format: 'float32x3' },
+                        { shaderLocation: 1, offset: 12, format: 'float32x3' }
+                    ]
+                }]
+            },
+            fragment: {
+                module: device.createShaderModule({ code: fragmentShader }),
+                entryPoint: 'main',
+                targets: [{ format }]
+            },
             primitive: { topology: 'triangle-list' },
             depthStencil: { depthWriteEnabled: true, depthCompare: 'less', format: 'depth24plus' }
         });
 
         const rodPipeline = device.createRenderPipeline({
             layout: 'auto',
-            vertex: { module: device.createShaderModule({ code: vertexShader }), entryPoint: 'main', buffers: [{
-                arrayStride: 24,
-                attributes: [
-                    { shaderLocation: 0, offset: 0, format: 'float32x3' },
-                    { shaderLocation: 1, offset: 12, format: 'float32x3' }
-                ]
-            }]},
-            fragment: { module: device.createShaderModule({ code: rodFragmentShader }), entryPoint: 'main', targets: [{ format }] },
+            vertex: {
+                module: device.createShaderModule({ code: rodVertexShader }),
+                entryPoint: 'main',
+                buffers: [{
+                    arrayStride: 24,
+                    attributes: [
+                        { shaderLocation: 0, offset: 0, format: 'float32x3' },
+                        { shaderLocation: 1, offset: 12, format: 'float32x3' }
+                    ]
+                }]
+            },
+            fragment: {
+                module: device.createShaderModule({ code: rodFragmentShader }),
+                entryPoint: 'main',
+                targets: [{ format }]
+            },
             primitive: { topology: 'triangle-list' },
             depthStencil: { depthWriteEnabled: true, depthCompare: 'less', format: 'depth24plus' }
         });
 
         const particlePipeline = device.createRenderPipeline({
             layout: 'auto',
-            vertex: { module: device.createShaderModule({ code: particleVertexShader }), entryPoint: 'main' },
-            fragment: { module: device.createShaderModule({ code: particleFragmentShader }), entryPoint: 'main', targets: [{ format, blend: {
-                color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
-                alpha: { srcFactor: 'one', dstFactor: 'zero' }
-            }}] },
+            vertex: {
+                module: device.createShaderModule({ code: particleVertexShader }),
+                entryPoint: 'main'
+            },
+            fragment: {
+                module: device.createShaderModule({ code: particleFragmentShader }),
+                entryPoint: 'main',
+                targets: [{
+                    format,
+                    blend: {
+                        color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
+                        alpha: { srcFactor: 'one', dstFactor: 'zero' }
+                    }
+                }]
+            },
             primitive: { topology: 'triangle-list' },
             depthStencil: { depthWriteEnabled: false, depthCompare: 'less', format: 'depth24plus' }
         });
@@ -376,17 +502,29 @@
         });
 
         // Bind Groups
-        const uniformBuffer = device.createBuffer({ size: 68, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-        const timeBuffer = device.createBuffer({ size: 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        const uniformBuffer = device.createBuffer({
+            size: 72,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+        const paramsBuffer = device.createBuffer({
+            size: 16,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
 
         const earthBindGroup = device.createBindGroup({
             layout: earthPipeline.getBindGroupLayout(0),
-            entries: [{ binding: 0, resource: { buffer: uniformBuffer } }]
+            entries: [
+                { binding: 0, resource: { buffer: uniformBuffer } },
+                { binding: 1, resource: { buffer: terrainBuffer } }
+            ]
         });
 
         const rodBindGroup = device.createBindGroup({
             layout: rodPipeline.getBindGroupLayout(0),
-            entries: [{ binding: 0, resource: { buffer: uniformBuffer } }]
+            entries: [
+                { binding: 0, resource: { buffer: uniformBuffer } },
+                { binding: 1, resource: { buffer: rodPositionBuffer } }
+            ]
         });
 
         const particleBindGroup = device.createBindGroup({
@@ -403,7 +541,7 @@
                 { binding: 0, resource: { buffer: rodBuffer } },
                 { binding: 1, resource: { buffer: terrainBuffer } },
                 { binding: 2, resource: { buffer: impactBuffer } },
-                { binding: 3, resource: { buffer: timeBuffer } }
+                { binding: 3, resource: { buffer: paramsBuffer } }
             ]
         });
 
@@ -411,69 +549,145 @@
             layout: particleComputePipeline.getBindGroupLayout(0),
             entries: [
                 { binding: 0, resource: { buffer: particleBuffer } },
-                { binding: 1, resource: { buffer: timeBuffer } }
+                { binding: 1, resource: { buffer: paramsBuffer } }
             ]
         });
 
         // Camera
         const aspect = canvas.width / canvas.height;
-        const proj = mat4.perspective(Math.PI / 4, aspect, 1, 100000000);
-        const view = mat4.lookAt([0, 0, 20000000], [0, 0, 0], [0, 1, 0]);
+        const proj = mat4.perspective(Math.PI / 3, aspect, 1, 150000000);
+        const view = mat4.lookAt([0, 10000000, 20000000], [0, 0, 0], [0, 1, 0]);
         let model = mat4.identity();
+        let cameraAngle = 0;
 
         // Game Logic
         function dropRod() {
-            if (Date.now() - gameState.lastDrop < 30000 / gameState.satellites) return;
+            if (Date.now() - gameState.lastDrop < 25000 / gameState.satellites) return;
+            if (gameState.defenses > Math.random() * 100) {
+                showAlert("Intercepted by planetary defenses!");
+                return;
+            }
             gameState.lastDrop = Date.now();
-            for (let i = 0; i < gameState.rods; i++) {
-                const pos = gameState.precision ?
-                    [Math.random() * 500000 - 250000, 36000000, Math.random() * 500000 - 250000] :
-                    [Math.random() * 2000000 - 1000000, 36000000, Math.random() * 2000000 - 1000000];
-                rods.push({ position: pos, velocity: [0, -15000, 0], mass: 1000 * gameState.rodPower });
+            const dropCount = gameState.colossus && Math.random() < 0.1 ? 1 : gameState.rods;
+            for (let i = 0; i < dropCount; i++) {
+                const spread = gameState.precision ? 400000 : 1500000;
+                const pos = [
+                    Math.random() * spread - spread / 2,
+                    36000000,
+                    Math.random() * spread - spread / 2
+                ];
+                const mass = gameState.colossus && i === 0 ? 2000000 : 1000 * gameState.rodPower;
+                rods.push({ position: pos, velocity: [0, -18000, 0], mass });
             }
             updateRods();
-            gameState.metal += 20 * gameState.rodPower;
-            gameState.influence += 10 * gameState.rodPower;
-            gameState.tech += 5 * gameState.rodPower;
+            gameState.metal += 25 * gameState.rodPower * dropCount;
+            gameState.influence += 15 * gameState.rodPower * dropCount;
+            gameState.tech += 8 * gameState.rodPower * dropCount;
             updateUI();
         }
 
-        function upgradeSatellites() { if (gameState.metal >= 50) { gameState.metal -= 50; gameState.satellites++; updateUI(); } }
-        function upgradeRods() { if (gameState.metal >= 100) { gameState.metal -= 100; gameState.rods++; updateUI(); } }
-        function upgradePower() { if (gameState.metal >= 150) { gameState.metal -= 150; gameState.rodPower *= 1.15; updateUI(); } }
-        function unlockAutomation() { if (gameState.tech >= 200 && !gameState.automation) { gameState.tech -= 200; gameState.automation = true; updateUI(); } }
-        function unlockPrecision() { if (gameState.tech >= 500 && !gameState.precision) { gameState.tech -= 500; gameState.precision = true; updateUI(); } }
-        function buildDyson() { if (gameState.tech >= 10000 && !gameState.dyson) { gameState.tech -= 10000; gameState.dyson = true; updateUI(); } }
-        function buildColossus() {
-            if (gameState.tech >= 50000 && !gameState.colossus) {
-                gameState.tech -= 50000; gameState.colossus = true;
-                rods.push({ position: [0, 36000000, 0], velocity: [0, -25000, 0], mass: 1000000 });
-                updateRods();
+        function upgradeSatellites() {
+            if (gameState.metal >= 50) {
+                gameState.metal -= 50;
+                gameState.satellites += 1;
                 updateUI();
             }
         }
+
+        function upgradeRods() {
+            if (gameState.metal >= 100) {
+                gameState.metal -= 100;
+                gameState.rods += 1;
+                updateUI();
+            }
+        }
+
+        function upgradePower() {
+            if (gameState.metal >= 150) {
+                gameState.metal -= 150;
+                gameState.rodPower *= 1.2;
+                updateUI();
+            }
+        }
+
+        function unlockAutomation() {
+            if (gameState.tech >= 200 && !gameState.automation) {
+                gameState.tech -= 200;
+                gameState.automation = true;
+                updateUI();
+            }
+        }
+
+        function unlockPrecision() {
+            if (gameState.tech >= 500 && !gameState.precision) {
+                gameState.tech -= 500;
+                gameState.precision = true;
+                updateUI();
+            }
+        }
+
+        function buildDyson() {
+            if (gameState.tech >= 10000 && !gameState.dyson) {
+                gameState.tech -= 10000;
+                gameState.dyson = true;
+                showAlert("Dyson Swarm online - resource influx initiated.");
+                updateUI();
+            }
+        }
+
+        function buildColossus() {
+            if (gameState.tech >= 50000 && !gameState.colossus) {
+                gameState.tech -= 50000;
+                gameState.colossus = true;
+                showAlert("Rod Colossus forged - prepare for annihilation.");
+                updateUI();
+            }
+        }
+
         function resetWorld() {
             if (gameState.phase >= 3) {
-                gameState.metal *= 2.5; gameState.influence *= 2.5; gameState.tech *= 2.5;
-                gameState.satellites = 1; gameState.rods = 1; gameState.rodPower = 1;
-                gameState.automation = false; gameState.precision = false; gameState.dyson = false; gameState.colossus = false;
-                gameState.phase = 1; gameState.timePlayed = 0; gameState.lastDrop = 0;
+                gameState.metal *= 3;
+                gameState.influence *= 3;
+                gameState.tech *= 3;
+                gameState.satellites = 1;
+                gameState.rods = 1;
+                gameState.rodPower = 1;
+                gameState.automation = false;
+                gameState.precision = false;
+                gameState.dyson = false;
+                gameState.colossus = false;
+                gameState.phase = 1;
+                gameState.timePlayed = 0;
+                gameState.lastDrop = 0;
                 gameState.nations = { usa: 100, china: 100, russia: 100, eu: 100 };
+                gameState.defenses = 0;
                 rods = [{ position: [0, 36000000, 0], velocity: [0, 0, 0], mass: 1000 }];
-                particles = []; terrainData.fill(0);
+                particles = [];
+                terrainData.fill(0);
                 device.queue.writeBuffer(terrainBuffer, 0, terrainData);
-                updateRods(); updateParticles(); updateUI();
+                updateRods();
+                updateParticles();
+                updateUI();
+                showAlert("Orbital Reset complete - new dominion awaits.");
             }
         }
 
         function updateGeopolitics() {
             if (gameState.phase >= 2) {
                 for (let nation in gameState.nations) {
-                    gameState.nations[nation] -= gameState.rodPower * 0.2 * gameState.rods;
+                    gameState.nations[nation] -= gameState.rodPower * gameState.rods * 0.25;
                     if (gameState.nations[nation] <= 0) gameState.nations[nation] = 0;
                 }
-                if (gameState.phase === 3 && Math.random() < 0.1) {
-                    rods.push({ position: [Math.random() * 2000000 - 1000000, 36000000, Math.random() * 2000000 - 1000000], velocity: [0, -12000, 0], mass: 800 });
+                if (gameState.phase === 3) {
+                    gameState.defenses += 0.01;
+                    if (Math.random() < 0.15) {
+                        rods.push({
+                            position: [Math.random() * 1500000 - 750000, 36000000, Math.random() * 1500000 - 750000],
+                            velocity: [0, -14000, 0],
+                            mass: 1200
+                        });
+                        showAlert("Enemy counterstrike detected!");
+                    }
                 }
             }
             document.getElementById('usa').textContent = Math.floor(gameState.nations.usa);
@@ -482,12 +696,28 @@
             document.getElementById('eu').textContent = Math.floor(gameState.nations.eu);
         }
 
+        function updateWeather() {
+            gameState.weather.wind = [
+                Math.sin(gameState.timePlayed * 0.1) * 50,
+                0,
+                Math.cos(gameState.timePlayed * 0.1) * 50
+            ];
+            gameState.weather.turbulence = Math.random() * 10;
+        }
+
         function spawnParticles(pos, mass) {
-            const count = Math.min(500 * mass / 1000, 10000);
+            const count = Math.min(Math.floor(mass * 0.05), 20000);
             for (let i = 0; i < count; i++) {
+                const angle = Math.random() * 2 * Math.PI;
+                const speed = Math.random() * 4000 + 1000;
                 particles.push({
-                    position: [pos[0] + (Math.random() - 0.5) * 5000, pos[1] + (Math.random() - 0.5) * 5000, pos[2] + (Math.random() - 0.5) * 5000, 1.0],
-                    velocity: [(Math.random() - 0.5) * 2000, Math.random() * 3000, (Math.random() - 0.5) * 2000, 0.0]
+                    position: [pos[0], pos[1], pos[2], 1.0 + mass * 0.0001],
+                    velocity: [
+                        Math.cos(angle) * speed,
+                        Math.random() * 5000,
+                        Math.sin(angle) * speed,
+                        0
+                    ]
                 });
             }
             updateParticles();
@@ -495,12 +725,16 @@
 
         function updateRods() {
             const rodData = new Float32Array(rods.length * 16 / 4);
+            const posData = new Float32Array(rods.length * 16 / 4);
             const impactData = new Float32Array(rods.length * 16 / 4);
             rods.forEach((rod, i) => {
                 rodData.set(rod.position.concat(rod.velocity, rod.mass), i * 4);
-                impactData.set(gameState.impacts[i] || [0, 0, 0, 0], i * 4);
+                posData.set(rod.position.concat(rod.mass), i * 4);
+                const impact = gameState.impacts[i] || [0, 0, 0, 0];
+                impactData.set(impact, i * 4);
             });
             device.queue.writeBuffer(rodBuffer, 0, rodData);
+            device.queue.writeBuffer(rodPositionBuffer, 0, posData);
             device.queue.writeBuffer(impactBuffer, 0, impactData);
         }
 
@@ -523,24 +757,43 @@
             document.getElementById('time').textContent = (gameState.timePlayed / 3600).toFixed(1);
         }
 
+        function showAlert(message) {
+            const alerts = document.getElementById('alerts');
+            alerts.textContent = message;
+            alerts.style.display = 'block';
+            setTimeout(() => alerts.style.display = 'none', 2000);
+        }
+
         // Animation Loop
         let lastTime = performance.now();
         function animate(time) {
-            const dt = Math.min((time - lastTime) / 1000, 0.1); // Cap dt to avoid physics blowup
+            const dt = Math.min((time - lastTime) / 1000, 0.1);
             lastTime = time;
 
             gameState.timePlayed += dt;
             if (gameState.timePlayed > 3600 * 3) gameState.phase = 2;
             if (gameState.timePlayed > 3600 * 7) gameState.phase = 3;
             if (gameState.automation) dropRod();
-            if (gameState.dyson) gameState.metal += dt * 20;
+            if (gameState.dyson) gameState.metal += dt * 30;
 
-            const mvp = mat4.multiply(proj, mat4.multiply(view, mat4.rotateY(model, dt * 0.05)));
-            const uniformData = new Float32Array(17);
+            updateWeather();
+            cameraAngle += dt * 0.03;
+            const mvp = mat4.multiply(proj, mat4.multiply(
+                mat4.lookAt(
+                    [Math.sin(cameraAngle) * 25000000, 10000000, Math.cos(cameraAngle) * 25000000],
+                    [0, 0, 0],
+                    [0, 1, 0]
+                ),
+                mat4.rotateY(model, dt * 0.05)
+            ));
+            const uniformData = new Float32Array(18);
             uniformData.set(mvp);
             uniformData[16] = time / 1000;
+            uniformData[17] = 10000;
             device.queue.writeBuffer(uniformBuffer, 0, uniformData);
-            device.queue.writeBuffer(timeBuffer, 0, new Float32Array([dt]));
+
+            const paramsData = new Float32Array([dt, ...gameState.weather.wind]);
+            device.queue.writeBuffer(paramsBuffer, 0, paramsData);
 
             const commandEncoder = device.createCommandEncoder();
 
@@ -557,16 +810,23 @@
             particlePass.dispatchWorkgroups(Math.ceil(particles.length / 64));
             particlePass.end();
 
-            // Check Impacts
+            // Process Impacts
             gameState.impacts = rods.map((rod, i) => {
-                const impact = new Float32Array(impactBuffer.getMappedRange?.() || new ArrayBuffer(16))[i * 4];
-                if (impact && impact[3] > 0) {
-                    spawnParticles([impact[0], impact[1], impact[2]], impact[3]);
-                    return [impact[0], impact[1], impact[2], impact[3]];
+                const impact = new Float32Array(16);
+                device.queue.copyBufferToBuffer(impactBuffer, i * 16, device.createBuffer({
+                    size: 16,
+                    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
+                }), 0, 16);
+                const pos = rod.position;
+                if (pos[0] !== 0 || pos[1] !== 0 || pos[2] !== 0) return null;
+                const mass = impact[3];
+                if (mass > 0) {
+                    spawnParticles([impact[0], impact[1], impact[2]], mass);
+                    updateGeopolitics();
+                    return [impact[0], impact[1], impact[2], mass];
                 }
                 return null;
             }).filter(Boolean);
-            updateGeopolitics();
 
             // Render Pass
             const renderPass = commandEncoder.beginRenderPass({
@@ -598,7 +858,7 @@
             renderPass.setBindGroup(0, rodBindGroup);
             renderPass.setVertexBuffer(0, rodVertexBuffer);
             renderPass.setIndexBuffer(rodIndexBuffer, 'uint32');
-            rods.forEach(() => renderPass.drawIndexed(rodIndices.length));
+            renderPass.drawIndexed(rodIndices.length, rods.length);
 
             renderPass.setPipeline(particlePipeline);
             renderPass.setBindGroup(0, particleBindGroup);
@@ -670,8 +930,7 @@
             }
         };
 
-        // Verification and Start
-        console.log('Starting Orbital Dominion...');
+        // Initialize
         updateRods();
         updateParticles();
         updateUI();
