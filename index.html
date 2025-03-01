@@ -1,215 +1,126 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Rods from God: Impact Simulator</title>
-    <style>
-        body { margin: 0; overflow: hidden; background: #000; }
-        canvas { width: 100vw; height: 100vh; display: block; }
-    </style>
+    <title>Rods from God Game</title>
+    <style>body { margin: 0; overflow: hidden; }</style>
 </head>
 <body>
-    <canvas id="canvas"></canvas>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <div id="game"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
-        // Three.js Setup
+        // Scene setup
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000000);
-        camera.position.set(0, 7000, 10000);
-        const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas'), antialias: true });
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-        window.addEventListener('resize', () => {
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-        });
+        document.getElementById('game').appendChild(renderer.domElement);
 
         // Earth
-        const earthRadius = 6371; // km
+        const R_e = 100;
         const earth = new THREE.Mesh(
-            new THREE.SphereGeometry(earthRadius, 128, 128),
-            new THREE.MeshPhongMaterial({
-                map: new THREE.TextureLoader().load('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg'),
-                bumpMap: new THREE.TextureLoader().load('https://threejs.org/examples/textures/planets/earth_bump_2048.jpg'),
-                bumpScale: 10,
-                shininess: 20
-            })
+            new THREE.SphereGeometry(R_e, 32, 32),
+            new THREE.MeshBasicMaterial({ color: 0x0000ff })
         );
-        earth.receiveShadow = true;
         scene.add(earth);
 
-        // Atmosphere
-        const atmosphere = new THREE.Mesh(
-            new THREE.SphereGeometry(earthRadius * 1.015, 128, 128),
-            new THREE.MeshBasicMaterial({
-                color: 0x00aaff,
-                transparent: true,
-                opacity: 0.4,
-                side: THREE.BackSide
-            })
+        // Satellite
+        const r_orbit = 110;
+        const satellite = new THREE.Mesh(
+            new THREE.BoxGeometry(5, 5, 5),
+            new THREE.MeshBasicMaterial({ color: 0xff0000 })
         );
-        scene.add(atmosphere);
+        satellite.position.set(r_orbit, 0, 0);
+        scene.add(satellite);
 
-        // Lighting
-        const sunLight = new THREE.DirectionalLight(0xffffff, 1);
-        sunLight.position.set(10000, 10000, 10000);
-        sunLight.castShadow = true;
-        sunLight.shadow.mapSize.width = 2048;
-        sunLight.shadow.mapSize.height = 2048;
-        sunLight.shadow.camera.near = 100;
-        sunLight.shadow.camera.far = 20000;
-        sunLight.shadow.camera.left = -10000;
-        sunLight.shadow.camera.right = 10000;
-        sunLight.shadow.camera.top = 10000;
-        sunLight.shadow.camera.bottom = -10000;
-        scene.add(sunLight);
-        scene.add(new THREE.AmbientLight(0x333333));
+        // Targets (example: one at equator)
+        const target = new THREE.Mesh(
+            new THREE.SphereGeometry(2, 16, 16),
+            new THREE.MeshBasicMaterial({ color: 0xffff00 })
+        );
+        target.position.set(R_e, 0, 0); // lon=0, lat=0
+        target.lat = 0;
+        target.lon = 0;
+        earth.add(target);
 
-        // Rod
-        const rodGeometry = new THREE.CylinderGeometry(5, 5, 50, 32);
-        const rodMaterial = new THREE.MeshPhongMaterial({
-            color: 0xaaaaaa,
-            emissive: 0xff5500,
-            emissiveIntensity: 0,
-            shininess: 50,
-            specular: 0x555555
-        });
-        const rod = new THREE.Mesh(rodGeometry, rodMaterial);
-        rod.position.set(0, 36000, 0); // Start at 36,000 km
-        rod.velocity = new THREE.Vector3(0, -500, 0); // Initial velocity toward Earth
-        rod.mass = 10000; // 10 tons
-        rod.castShadow = true;
-        scene.add(rod);
+        // Simulation parameters
+        const mu = 1;
+        const omega = Math.sqrt(mu / Math.pow(r_orbit / R_e, 3));
+        const T_orbit = 2 * Math.PI / omega;
+        const timeScale = 30 / T_orbit; // Orbital period = 30s
+        const omega_earth = omega / 16; // Earth slower than orbit
+        const dt = 1 / 60;
+        const dt_sim = dt * timeScale;
 
-        // Impact Effects
-        const particleGeometry = new THREE.BufferGeometry();
-        const particleCount = 20000;
-        const positions = new Float32Array(particleCount * 3);
-        const velocities = new Float32Array(particleCount * 3);
-        const lifetimes = new Float32Array(particleCount);
-        particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        const particleMaterial = new THREE.PointsMaterial({
-            color: 0xffaa00,
-            size: 10,
-            transparent: true,
-            blending: THREE.AdditiveBlending
-        });
-        const particles = new THREE.Points(particleGeometry, particleMaterial);
-        scene.add(particles);
+        let theta = 0;
+        let rods = [];
+        let time = 0;
 
-        const shockwaveGeometry = new THREE.PlaneGeometry(1000, 1000);
-        const shockwaveMaterial = new THREE.MeshBasicMaterial({
-            color: 0xff5500,
-            transparent: true,
-            opacity: 0,
-            side: THREE.DoubleSide
-        });
-        const shockwave = new THREE.Mesh(shockwaveGeometry, shockwaveMaterial);
-        shockwave.rotation.x = -Math.PI / 2;
-        shockwave.visible = false;
-        scene.add(shockwave);
-
-        // Physics Constants (scaled for km)
-        const G = 6.67430e-11 * 1e9;
-        const M = 5.972e24;
-        let impactOccurred = false;
-
-        // Animation Loop
-        let lastTime = performance.now();
-        function animate(time) {
-            const dt = Math.min((time - lastTime) / 1000, 0.1);
-            lastTime = time;
-
-            if (!impactOccurred) {
-                // Physics Update
-                const r = rod.position.length();
-                const altitude = r - earthRadius;
-                let simSpeed = 10;
-
-                if (altitude > 0) {
-                    // Gravity
-                    const gravity = rod.position.clone().normalize().multiplyScalar(-G * M / (r * r));
-                    rod.velocity.add(gravity.multiplyScalar(dt * simSpeed));
-
-                    // Atmospheric Drag
-                    if (altitude < 130) {
-                        const density = 1.225 * Math.exp(-altitude / 7.2);
-                        const vMag = rod.velocity.length();
-                        const drag = rod.velocity.clone().normalize().multiplyScalar(-0.5 * density * vMag * vMag * 0.015);
-                        rod.velocity.add(drag.multiplyScalar(dt * simSpeed));
-                    }
-
-                    // Dynamic Speed
-                    const timeToImpact = -altitude / rod.velocity.y;
-                    if (timeToImpact <= 5) simSpeed = Math.max(1, simSpeed * (timeToImpact / 5));
-                    if (timeToImpact <= 0.5) simSpeed = Math.max(0.1, simSpeed * (timeToImpact / 0.5));
-
-                    rod.position.add(rod.velocity.clone().multiplyScalar(dt * simSpeed));
-                    rod.material.emissiveIntensity = Math.min(2, (130 - altitude) / 65);
-
-                    // Camera Zoom
-                    camera.position.lerp(rod.position.clone().normalize().multiplyScalar(10000), dt * 2);
-                    camera.lookAt(rod.position);
-                } else {
-                    // Impact
-                    impactOccurred = true;
-                    const impactPoint = rod.position.clone();
-
-                    // Ejecta
-                    for (let i = 0; i < particleCount; i++) {
-                        const angle = Math.random() * 2 * Math.PI;
-                        const speed = Math.random() * 200 + 50;
-                        positions[i * 3] = impactPoint.x;
-                        positions[i * 3 + 1] = impactPoint.y;
-                        positions[i * 3 + 2] = impactPoint.z;
-                        velocities[i * 3] = Math.cos(angle) * speed;
-                        velocities[i * 3 + 1] = Math.random() * 300 + 100;
-                        velocities[i * 3 + 2] = Math.sin(angle) * speed;
-                        lifetimes[i] = 5;
-                    }
-                    particleGeometry.attributes.position.needsUpdate = true;
-
-                    // Shockwave
-                    shockwave.position.copy(impactPoint);
-                    shockwave.visible = true;
-                    shockwave.scale.set(1, 1, 1);
-                    shockwaveMaterial.opacity = 0.8;
-
-                    // Crater (simplified displacement)
-                    earth.scale.multiplyScalar(0.999);
-                    scene.remove(rod);
-                }
-            } else {
-                // Post-Impact Effects
-                for (let i = 0; i < particleCount; i++) {
-                    if (lifetimes[i] > 0) {
-                        positions[i * 3] += velocities[i * 3] * dt;
-                        positions[i * 3 + 1] += (velocities[i * 3 + 1] -= 9.81 * dt) * dt;
-                        positions[i * 3 + 2] += velocities[i * 3 + 2] * dt;
-                        lifetimes[i] -= dt;
-                        if (lifetimes[i] <= 0) positions[i * 3 + 1] = -10000;
-                    }
-                }
-                particleGeometry.attributes.position.needsUpdate = true;
-
-                shockwave.scale.multiplyScalar(1 + dt * 5);
-                shockwaveMaterial.opacity -= dt * 0.5;
-                if (shockwaveMaterial.opacity <= 0) shockwave.visible = false;
-
-                camera.position.lerp(rod.position.clone().normalize().multiplyScalar(8000), dt);
-                camera.lookAt(rod.position);
-            }
-
-            earth.rotation.y += dt * 0.05;
-            renderer.render(scene, camera);
-            requestAnimationFrame(animate);
+        // Rod deployment
+        function deployRod() {
+            const rod = new THREE.Mesh(
+                new THREE.CylinderGeometry(1, 1, 10, 16),
+                new THREE.MeshBasicMaterial({ color: 0x888888 })
+            );
+            rod.position.copy(satellite.position);
+            const v_sat = new THREE.Vector3(
+                -Math.sqrt(mu / (r_orbit / R_e)) * Math.sin(theta),
+                Math.sqrt(mu / (r_orbit / R_e)) * Math.cos(theta),
+                0
+            );
+            const dir = satellite.position.clone().normalize().multiplyScalar(-1);
+            rod.velocity = v_sat.add(dir.multiplyScalar(0.1));
+            rod.startTime = time;
+            scene.add(rod);
+            rods.push(rod);
         }
 
-        requestAnimationFrame(animate);
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Update satellite
+            theta += omega * dt_sim;
+            satellite.position.set(r_orbit * Math.cos(theta), r_orbit * Math.sin(theta), 0);
+            camera.position.set(satellite.position.x + 50, satellite.position.y + 50, 50);
+            camera.lookAt(satellite.position);
+
+            // Rotate Earth
+            earth.rotation.z += omega_earth * dt_sim;
+
+            // Update rods
+            rods = rods.filter(rod => {
+                let r = rod.position.clone();
+                let r_mag = r.length() / R_e;
+                if (r_mag <= 1) {
+                    // Impact: check hit
+                    let t_impact = time - rod.startTime;
+                    let theta_earth = omega_earth * t_impact;
+                    let r_world = rod.position;
+                    let x_local = r_world.x * Math.cos(theta_earth) + r_world.y * Math.sin(theta_earth);
+                    let y_local = -r_world.x * Math.sin(theta_earth) + r_world.y * Math.cos(theta_earth);
+                    let z_local = r_world.z;
+                    let lat = Math.asin(z_local / R_e);
+                    let lon = Math.atan2(y_local, x_local);
+                    scene.remove(rod);
+                    console.log(`Hit at lat: ${lat}, lon: ${lon}`); // Check against target.lat, target.lon
+                    return false;
+                }
+                let a = r.multiplyScalar(-mu / (r_mag * r_mag * r_mag));
+                rod.velocity.addScaledVector(a, dt_sim);
+                rod.position.addScaledVector(rod.velocity, dt_sim);
+                return true;
+            });
+
+            time += dt_sim;
+            renderer.render(scene, camera);
+        }
+
+        // Controls
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') deployRod();
+        });
+
+        animate();
     </script>
 </body>
 </html>
