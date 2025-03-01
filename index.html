@@ -143,21 +143,25 @@
         });
 
         // Game Functions
-        function launchRod() {
-            if (!gameState.target) return alert('Select a target on Earth first!');
-            for (let i = 0; i < gameState.rodsPerLaunch; i++) {
-                const rodMaterial = new THREE.MeshPhongMaterial({ color: 0xaaaaaa, emissive: 0xff5500, emissiveIntensity: 0 });
-                const rod = new THREE.Mesh(rodGeometry, rodMaterial);
-                rod.position.copy(gameState.target);
-                rod.velocity = rod.position.clone().normalize().multiplyScalar(-500); // Initial velocity toward Earth
-                rod.mass = 1000; // kg
-                scene.add(rod);
-                rods.push(rod);
-            }
-            gameState.target = null;
-            document.getElementById('target-lat').textContent = 'N/A';
-            document.getElementById('target-lon').textContent = 'N/A';
-        }
+function launchRod() {
+    if (!gameState.target) return alert('Select a target on Earth first!');
+    for (let i = 0; i < gameState.rodsPerLaunch; i++) {
+        const rodMaterial = new THREE.MeshPhongMaterial({ color: 0xaaaaaa, emissive: 0xff5500, emissiveIntensity: 0 });
+        const rod = new THREE.Mesh(rodGeometry, rodMaterial);
+        rod.position.copy(gameState.target);
+        
+        // Corrected velocity calculation:
+        const directionTowardEarth = rod.position.clone().normalize().multiplyScalar(-500); // This pushes the rod toward Earth
+        rod.velocity = directionTowardEarth;
+
+        rod.mass = 1000; // kg
+        scene.add(rod);
+        rods.push(rod);
+    }
+    gameState.target = null;
+    document.getElementById('target-lat').textContent = 'N/A';
+    document.getElementById('target-lon').textContent = 'N/A';
+}
 
         function upgradeSatellites() {
             if (gameState.metal >= 50) {
