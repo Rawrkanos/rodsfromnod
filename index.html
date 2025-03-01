@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rods from God: Kinetic Strike</title>
+    <title>Rods from God: Orbital Strike</title>
     <style>
         body { margin: 0; overflow: hidden; }
         canvas { display: block; }
@@ -17,7 +17,7 @@
             padding: 10px;
             border-radius: 5px;
         }
-        button {
+        button, select {
             margin: 5px;
             padding: 5px 10px;
             background: #333;
@@ -26,7 +26,7 @@
             border-radius: 3px;
             cursor: pointer;
         }
-        button:hover { background: #555; }
+        button:hover, select:hover { background: #555; }
     </style>
 </head>
 <body>
@@ -34,6 +34,19 @@
         <div>Altitude: <span id="altitude">0</span> km</div>
         <div>Velocity: <span id="velocity">0</span> m/s</div>
         <div>Impact Energy: <span id="energy">0</span> MJ</div>
+        <div>Score: <span id="score">0</span></div>
+        <div>Rods Remaining: <span id="rods">3</span></div>
+        <select id="target">
+            <option value="0">Random Target</option>
+            <option value="1">City</option>
+            <option value="2">Bunker</option>
+            <option value="3">Mountain</option>
+        </select>
+        <select id="altitudeSelect">
+            <option value="200000">200 km</option>
+            <option value="400000">400 km</option>
+            <option value="600000">600 km</option>
+        </select>
         <button id="launch">Launch Rod</button>
         <button id="reset">Reset</button>
     </div>
@@ -48,7 +61,7 @@
         renderer.shadowMap.enabled = true;
         document.body.appendChild(renderer.domElement);
 
-        // Earth (Simplified as a flat plane for performance)
+        // Ground
         const groundGeometry = new THREE.PlaneGeometry(10000, 10000);
         const groundMaterial = new THREE.MeshPhongMaterial({ 
             color: 0x228B22, 
@@ -60,7 +73,7 @@
         ground.receiveShadow = true;
         scene.add(ground);
 
-        // Rod (Tungsten Cylinder)
+        // Rod
         const rodRadius = 0.15; // 30 cm diameter
         const rodLength = 6.1;  // 20 feet
         const rodGeometry = new THREE.CylinderGeometry(rodRadius, rodRadius, rodLength, 32);
@@ -71,8 +84,46 @@
         });
         const rod = new THREE.Mesh(rodGeometry, rodMaterial);
         rod.castShadow = true;
-        rod.position.y = 400; // Start at 400 km altitude (Low Earth Orbit)
+        rod.position.y = 400; // Initial visual height
         scene.add(rod);
+
+        // Targets
+        const targets = [];
+        function createTarget(type, x, z) {
+            let geometry, material, height;
+            switch(type) {
+                case 1: // City
+                    geometry = new THREE.BoxGeometry(10, 5, 10);
+                    material = new THREE.MeshPhongMaterial({ color: 0x808080 });
+                    height = 2.5;
+                    break;
+                case 2: // Bunker
+                    geometry = new THREE.BoxGeometry(5, 2, 5);
+                    material = new THREE.MeshPhongMaterial({ color: 0x4B2E2A });
+                    height = 1;
+                    break;
+                case 3: // Mountain
+                    geometry = new THREE.ConeGeometry(10, 15, 32);
+                    material = new THREE.MeshPhongMaterial({ color: 0x696969 });
+                    height = 7.5;
+                    break;
+                default: // Random
+                    return createTarget(Math.floor(Math.random() * 3) + 1, x, z);
+            }
+            const target = new THREE.Mesh(geometry, material);
+            target.position.set(x, height, z);
+            target.castShadow = true;
+            target.receiveShadow = true;
+            target.userData = { type, height };
+            scene.add(target);
+            targets.push(target);
+            return target;
+        }
+
+        // Initial Targets
+        createTarget(1, -20, 20);  // City
+        createTarget(2, 30, -10);  // Bunker
+        createTarget(3, 0, 30);    // Mountain
 
         // Lighting
         const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
@@ -86,7 +137,7 @@
         sunLight.shadow.camera.far = 1000;
         scene.add(sunLight);
 
-        // Camera Positioning
+        // Camera
         camera.position.set(0, 50, 100);
         camera.lookAt(0, 0, 0);
 
@@ -100,25 +151,70 @@
 
         // Simulation Variables
         let velocity = 0;     // m/s (negative is downward)
-        let altitude = 400000; // m (400 km starting altitude)
+        let altitude = 400000; // m
         let isLaunched = false;
+        let score = 0;
+        let rodsRemaining = 3;
+        let targetX = 0;
+        let targetZ = 0;
 
         // UI Elements
         const altitudeDisplay = document.getElementById('altitude');
         const velocityDisplay = document.getElementById('velocity');
         const energyDisplay = document.getElementById('energy');
+        const scoreDisplay = document.getElementById('score');
+        const rodsDisplay = document.getElementById('rods');
         const launchButton = document.getElementById('launch');
         const resetButton = document.getElementById('reset');
+        const targetSelect = document.getElementById('target');
+        const altitudeSelect = document.getElementById('altitudeSelect');
 
-        launchButton.addEventListener('click', () => isLaunched = true);
+        launchButton.addEventListener('click', launchRod);
         resetButton.addEventListener('click', resetSimulation);
+        targetSelect.addEventListener('change', updateTargetPosition);
+        altitudeSelect.addEventListener('change', () => {
+            altitude = parseFloat(altitudeSelect.value);
+            rod.position.y = altitude / 1000;
+        });
+
+        function launchRod() {
+            if (rodsRemaining > 0 && !isLaunched) {
+                isLaunched = true;
+                rodsRemaining--;
+                rodsDisplay.textContent = rodsRemaining;
+            }
+        }
 
         function resetSimulation() {
             isLaunched = false;
             velocity = 0;
-            altitude = 400000;
-            rod.position.y = 400;
+            altitude = parseFloat(altitudeSelect.value);
+            rod.position.set(targetX, altitude / 1000, targetZ);
             rod.rotation.set(0, 0, 0);
+            score = 0;
+            rodsRemaining = 3;
+            scoreDisplay.textContent = score;
+            rodsDisplay.textContent = rodsRemaining;
+            targets.forEach(t => scene.remove(t));
+            targets.length = 0;
+            createTarget(1, -20, 20);
+            createTarget(2, 30, -10);
+            createTarget(3, 0, 30);
+        }
+
+        function updateTargetPosition() {
+            const targetType = parseInt(targetSelect.value);
+            if (targetType === 0) {
+                targetX = (Math.random() - 0.5) * 50;
+                targetZ = (Math.random() - 0.5) * 50;
+            } else {
+                const target = targets.find(t => t.userData.type === targetType);
+                if (target) {
+                    targetX = target.position.x;
+                    targetZ = target.position.z;
+                }
+            }
+            if (!isLaunched) rod.position.set(targetX, altitude / 1000, targetZ);
         }
 
         // Animation Loop
@@ -126,29 +222,26 @@
             requestAnimationFrame(animate);
 
             if (isLaunched && altitude > 0) {
-                // Time step (assuming 60 FPS)
-                const dt = 0.016; // seconds
+                const dt = 0.016; // 60 FPS timestep
 
-                // Gravitational Acceleration (always downward)
+                // Gravitational Acceleration
                 const r = R + altitude;
-                const gravity = -(G * M) / (r * r); // Negative for downward force
+                const gravity = -(G * M) / (r * r);
 
-                // Atmospheric Drag (opposes velocity direction)
+                // Atmospheric Drag
                 const altitudeKm = altitude / 1000;
                 const airDensity = altitudeKm < 100 ? airDensitySL * Math.exp(-altitudeKm / 7.5) : 0;
                 const crossSection = Math.PI * rodRadius * rodRadius;
-                const dragForce = 0.5 * airDensity * velocity * velocity * dragCoefficient * crossSection * (velocity > 0 ? 1 : -1);
+                const dragForce = 0.5 * airDensity * velocity * velocity * dragCoefficient * (velocity > 0 ? 1 : -1);
                 const dragAcceleration = dragForce / rodMass;
 
-                // Total Acceleration
+                // Update Physics
                 const totalAcceleration = gravity + dragAcceleration;
-
-                // Update Velocity and Position
                 velocity += totalAcceleration * dt;
                 altitude += velocity * dt;
-                rod.position.y = altitude / 1000; // Convert to km for visual scale
+                rod.position.y = altitude / 1000;
 
-                // Rod Orientation (align with velocity vector)
+                // Rod Orientation
                 rod.rotation.x = Math.PI / 2 - Math.atan2(velocity, 100);
 
                 // Impact Handling
@@ -156,7 +249,7 @@
                     altitude = 0;
                     velocity = 0;
                     isLaunched = false;
-                    createImpactCrater();
+                    handleImpact();
                 }
             }
 
@@ -168,31 +261,69 @@
             renderer.render(scene, camera);
         }
 
-        // Impact Crater Effect
-        function createImpactCrater() {
+        // Impact Handling
+        function handleImpact() {
+            createImpactCrater(rod.position.x, rod.position.z);
+            const hitTarget = targets.find(t => 
+                Math.hypot(t.position.x - rod.position.x, t.position.z - rod.position.z) < 10
+            );
+            if (hitTarget) {
+                const energy = (0.5 * rodMass * velocity * velocity) / 1e6; // MJ
+                score += Math.floor(energy * (hitTarget.userData.type === 2 ? 2 : 1)); // Bonus for bunkers
+                scoreDisplay.textContent = score;
+                scene.remove(hitTarget);
+                targets.splice(targets.indexOf(hitTarget), 1);
+            }
+            if (rodsRemaining > 0) {
+                rod.position.set(targetX, parseFloat(altitudeSelect.value) / 1000, targetZ);
+            } else {
+                rod.visible = false; // Game over visually
+            }
+        }
+
+        // Impact Crater and Explosion Effect
+        function createImpactCrater(x, z) {
             const craterGeometry = new THREE.CircleGeometry(5, 32);
             const craterMaterial = new THREE.MeshBasicMaterial({ color: 0x8B4513 });
             const crater = new THREE.Mesh(craterGeometry, craterMaterial);
             crater.rotation.x = -Math.PI / 2;
-            crater.position.y = 0.01; // Slightly above ground to avoid z-fighting
+            crater.position.set(x, 0.01, z);
             scene.add(crater);
 
-            // Simple particle effect for debris
+            // Explosion Particles
             const particles = new THREE.Group();
-            for (let i = 0; i < 50; i++) {
+            for (let i = 0; i < 100; i++) {
                 const particle = new THREE.Mesh(
-                    new THREE.SphereGeometry(0.1, 8, 8),
-                    new THREE.MeshBasicMaterial({ color: 0x808080 })
+                    new THREE.SphereGeometry(0.2, 8, 8),
+                    new THREE.MeshBasicMaterial({ color: Math.random() > 0.5 ? 0xFF4500 : 0x808080 })
                 );
                 particle.position.set(
-                    (Math.random() - 0.5) * 10,
+                    x + (Math.random() - 0.5) * 20,
+                    Math.random() * 10,
+                    z + (Math.random() - 0.5) * 20
+                );
+                particle.userData.velocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * 5,
                     Math.random() * 5,
-                    (Math.random() - 0.5) * 10
+                    (Math.random() - 0.5) * 5
                 );
                 particles.add(particle);
             }
             scene.add(particles);
-            setTimeout(() => scene.remove(particles), 2000);
+
+            // Animate Particles
+            let time = 0;
+            const particleAnimation = setInterval(() => {
+                time += 0.016;
+                particles.children.forEach(p => {
+                    p.position.add(p.userData.velocity.clone().multiplyScalar(0.016));
+                    p.userData.velocity.y -= 9.81 * 0.016; // Gravity
+                });
+                if (time > 2) {
+                    scene.remove(particles);
+                    clearInterval(particleAnimation);
+                }
+            }, 16);
         }
 
         // Handle Window Resize
@@ -202,6 +333,8 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
+        // Initialize
+        updateTargetPosition();
         animate();
     </script>
 </body>
