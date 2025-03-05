@@ -36,10 +36,16 @@
     <div id="ui">Score: 0<br>Height: 10m<br>Click to Launch</div>
 
     <!-- Core Dependencies -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/examples/js/postprocessing/EffectComposer.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/examples/js/postprocessing/RenderPass.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/examples/js/postprocessing/BloomPass.js"></script>
+    <script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@latest/build/three.module.js",
+    "three/examples/jsm/postprocessing/EffectComposer": "https://unpkg.com/three@latest/examples/jsm/postprocessing/EffectComposer.js",
+    "three/examples/jsm/postprocessing/RenderPass": "https://unpkg.com/three@latest/examples/jsm/postprocessing/RenderPass.js",
+    "three/examples/jsm/postprocessing/BloomPass": "https://unpkg.com/three@latest/examples/jsm/postprocessing/BloomPass.js"
+  }
+}
+</script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
 
     <!-- Game Systems (Full Creation Order) -->
