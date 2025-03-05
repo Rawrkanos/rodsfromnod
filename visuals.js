@@ -1,13 +1,7 @@
 // visuals.js - Enhanced WebGL rendering with procedural textures
 
-import * as THREE from './three.min.js';
-import { EffectComposer } from './EffectComposer.js';
-import { RenderPass } from './RenderPass.js';
-import { BloomPass } from './BloomPass.js';
-
-
-// Assumes SimplexNoise is loaded globally via index.html
-const noise = new SimplexNoise();
+// Assumes THREE and SimplexNoise are loaded globally via index.html
+const noise = window.SimplexNoise;
 
 class Visuals {
     constructor() {
@@ -143,9 +137,9 @@ class Visuals {
         this.scene.background = new THREE.Color(0x87ceeb);
         this.scene.fog = new THREE.Fog(0x87ceeb, 500, 2000);
 
-        this.composer = new EffectComposer(this.renderer);
-        this.composer.addPass(new RenderPass(this.scene, this.camera));
-        this.composer.addPass(new BloomPass(1.5, 25, 4.0, 512));
+        this.composer = new THREE.EffectComposer(this.renderer);
+        this.composer.addPass(new THREE.RenderPass(this.scene, this.camera));
+        this.composer.addPass(new THREE.BloomPass(1.5, 25, 4.0, 512));
 
         console.log('Enhanced WebGL initialized');
     }
