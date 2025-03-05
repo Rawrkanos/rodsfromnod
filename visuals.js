@@ -1,9 +1,10 @@
 // visuals.js - Enhanced WebGL rendering with procedural textures
 
-import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js';
-import { EffectComposer } from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/examples/jsm/postprocessing/RenderPass.js';
-import { BloomPass } from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/examples/jsm/postprocessing/BloomPass.js';
+import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
+import { BloomPass } from 'three/examples/jsm/postprocessing/BloomPass';
+
 
 // Assumes SimplexNoise is loaded globally via index.html
 const noise = new SimplexNoise();
