@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rod Drop Game</title>
+    <style>
+        html, body { 
+            margin: 0; 
+            padding: 0; 
+            height: 100%; 
+            overflow: hidden; 
+            background: #000; 
+        }
+        canvas { 
+            width: 100%; 
+            height: 100%; 
+            display: block; 
+        }
+        #ui { 
+            position: absolute; 
+            top: 10px; 
+            left: 10px; 
+            color: white; 
+            font-family: Arial, sans-serif; 
+            background: rgba(0, 0, 0, 0.7); 
+            padding: 10px; 
+            border-radius: 5px; 
+            z-index: 10; 
+            pointer-events: none; 
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="ui">Score: 0<br>Height: 10m<br>Click to Launch</div>
+
+    <!-- Core Dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/examples/js/postprocessing/BloomPass.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+
+    <!-- Game Systems (Full Creation Order) -->
+    <script src="physics.js"></script>
+    <script src="game.js"></script>
+    <script src="terrain.js"></script>
+    <script src="atmosphere.js"></script>
+    <script src="rods.js"></script>
+    <script src="impact.js"></script>
+    <script src="ejecta.js"></script>
+    <script src="shockwave.js"></script>
+    <script src="weather.js"></script>
+    <script type="module" src="visuals.js"></script>
+    <script src="upgrades.js"></script>
+    <script src="prestige.js"></script>
+    <script src="ascension.js"></script>
+    <script src="stats.js"></script>
+    <script src="pip.js"></script>
+    <script src="ui.js"></script>
+    <script src="saves.js"></script>
+    <script src="options.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvas = document.getElementById('gameCanvas');
+            const uiContainer = document.getElementById('ui');
+
+            // Dynamic canvas scaling
+            function resizeCanvas() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                if (Game.systems.visuals) {
+                    Game.systems.visuals.renderer.setSize(canvas.width, canvas.height);
+                    Game.systems.visuals.composer.setSize(canvas.width, canvas.height);
+                    Game.systems.visuals.camera.aspect = canvas.width / canvas.height;
+                    Game.systems.visuals.camera.updateProjectionMatrix();
+                }
+            }
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+
+            // Temporary UI update until ui.js is fully implemented
+            const updateUI = () => {
+                uiContainer.innerHTML = `
+                    Score: ${Math.floor(Game.gameState.score)}<br>
+                    Height: ${Game.gameState.launchHeight.toFixed(1)}m<br>
+                    ${Game.gameState.currentRodIndex >= 0 ? 'Rod Falling' : 'Click to Launch'}
+                `;
+                requestAnimationFrame(updateUI);
+            };
+
+            try {
+                Game.init(canvas, uiContainer);
+                // Placeholder UI system until ui.js is ready
+                Game.systems.ui = Game.systems.ui || { updateUI: () => updateUI() };
+                updateUI();
+                console.log('Game initialized successfully');
+            } catch (e) {
+                console.error('Game initialization failed:', e);
+                uiContainer.innerHTML = 'Error loading game. Check console.';
+            }
+        });
+    </script>
+</body>
+</html>
