@@ -36,17 +36,11 @@
     <div id="ui">Score: 0<br>Height: 10m<br>Click to Launch</div>
 
     <!-- Core Dependencies -->
-    <script type="importmap">
-{
-  "imports": {
-    "three": "https://unpkg.com/three@latest/build/three.module.js",
-    "three/examples/jsm/postprocessing/EffectComposer": "https://unpkg.com/three@latest/examples/jsm/postprocessing/EffectComposer.js",
-    "three/examples/jsm/postprocessing/RenderPass": "https://unpkg.com/three@latest/examples/jsm/postprocessing/RenderPass.js",
-    "three/examples/jsm/postprocessing/BloomPass": "https://unpkg.com/three@latest/examples/jsm/postprocessing/BloomPass.js"
-  }
-}
-</script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+    <script src="three.min.js"></script>
+    <script src="EffectComposer.js"></script>
+    <script src="RenderPass.js"></script>
+    <script src="BloomPass.js"></script>
+    <script src="simplex-noise.min.js"></script>
 
     <!-- Game Systems (Full Creation Order) -->
     <script src="physics.js"></script>
