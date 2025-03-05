@@ -24,28 +24,58 @@ class Rods {
     }
 
     createRod() {
-        const upgradeData = Game.systems.upgrades.getRodUpgradeData();
-        const material = this.materials[upgradeData.material];
-        const length = upgradeData.length;
-        const radius = upgradeData.radius;
-        const volume = Math.PI * radius * radius * length;
-        const mass = material.density * volume;
+        if (!Game.systems.upgrades) {
+            console.error('Upgrades system not initialized');
+            // Fallback to default material
+            const material = this.materials['wood'];
+            const length = 0.5;
+            const radius = 0.05;
+            const volume = Math.PI * radius * radius * length;
+            const mass = material.density * volume;
 
-        this.currentRod = {
-            mass,
-            area: Math.PI * radius * radius,
-            shapeFactor: upgradeData.shapeFactor,
-            material: upgradeData.material,
-            length,
-            radius,
-            strength: material.strength,
-            x: Game.canvas.width / 2,
-            y: Game.gameState.launchHeight,
-            z: Game.canvas.height / 2,
-            vx: 0,
-            vy: 0,
-            vz: 0
-        };
+            this.currentRod = {
+                mass,
+                area: Math.PI * radius * radius,
+                shapeFactor: 1.0,
+                material: 'wood',
+                length,
+                radius,
+                strength: material.strength,
+                x: Game.canvas.width / 2,
+                y: Game.gameState.launchHeight,
+                z: Game.canvas.height / 2,
+                vx: 0,
+                vy: 0,
+                vz: 0
+            };
+        } else {
+            const upgradeData = Game.systems.upgrades.getRodUpgradeData();
+            const material = this.materials[upgradeData.material.toLowerCase()];
+            if (!material) {
+                console.error(`Material ${upgradeData.material} not found, falling back to wood`);
+                return this.createRod(); // Recursive fallback
+            }
+            const length = upgradeData.length;
+            const radius = upgradeData.radius;
+            const volume = Math.PI * radius * radius * length;
+            const mass = material.density * volume;
+
+            this.currentRod = {
+                mass,
+                area: Math.PI * radius * radius,
+                shapeFactor: upgradeData.shapeFactor,
+                material: upgradeData.material,
+                length,
+                radius,
+                strength: material.strength,
+                x: Game.canvas.width / 2,
+                y: Game.gameState.launchHeight,
+                z: Game.canvas.height / 2,
+                vx: 0,
+                vy: 0,
+                vz: 0
+            };
+        }
 
         this.preCalculateImpactForce();
         return this.currentRod;
